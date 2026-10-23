@@ -44,3 +44,35 @@ O Playwright utiliza `/usr/bin/chromium` quando disponível. Em outra máquina, 
 - `tests/browser/quote.spec.cjs`: integração com resultados reais, seleção, frete, edição, clipboard real, interceptação da abertura do WhatsApp, preferências e largura do modal em desktop e celular.
 
 Os testes verificam a URL e mensagem do compartilhamento sem enviar mensagens ou acessar contas do WhatsApp. Não exigem login ou integrações com transportadoras.
+
+## Plataforma unificada: montadora de artes
+
+A página inicial mantém a calculadora e os orçamentos. O link **Montadora de artes** abre o módulo integrado em `montadora/`, no mesmo site e repositório, com navegação de volta à calculadora. Não é necessário login externo; os arquivos são processados localmente e não são enviados a um servidor.
+
+A montadora foi integrada a partir do `brunothals/dtf-gang-sheet`, commit `c95d1ff62e0846b76deb1bfd494ade03b335f8d4`, preservando importação PNG/PDF, quantidades, rotação, modos de montagem, preenchimento, folha sob medida e exportação PNG/ZIP. Nenhum repositório antigo foi alterado. O código editável está em `montadora-src/`; `montadora/` contém a distribuição gerada e versionada para continuar funcionando em hospedagem estática por branch, sem depender de um servidor de aplicação.
+
+### Correções de tamanho e qualidade
+
+- O encaixe agora ocorre em uma malha física fixa de 0,001 mm; o DPI só converte o layout final para pixels. Mudar espaçamento altera as posições/quantidades que cabem, sem redimensionar as artes. Prévia, exportação e redimensionamento de prévia recuperam a mesma geometria original.
+- Margem e espaçamento zero são aceitos sem a margem artificial de 1 pixel. Os tamanhos das artes não são mais alterados para aproximar a resolução da fonte.
+- **Recortar folha ao conteúdo** fica desativado por padrão, inclusive em folha sob medida. O recorte é uma escolha explícita que muda as dimensões da folha, nunca o tamanho de impressão das artes. A interface mostra as dimensões finais da exportação, incluindo o recorte quando selecionado. Tamanhos raster têm arredondamento de até aproximadamente um pixel; ao importar no editor/RIP, utilize o DPI embutido e escala de 100%, sem ajustar à página.
+- **Máxima** preserva a densidade de pixels das fontes. A prévia reduzida não é usada como imagem de exportação. Exemplo coberto por teste: arte de 64 × 32 pixels a 0,2 cm mantém os 64 × 32 pixels e os detalhes pixel a pixel a 813 DPI. Forçar 300 DPI nesse tamanho gera aproximadamente 24 × 12 pixels: a interface avisa quando a seleção reduz a resolução.
+- Nenhuma resolução é reduzida silenciosamente para contornar falta de memória. Exportações com buffer RGBA acima de 512 MiB são recusadas com orientação para recortar o vazio, reduzir a folha ou escolher outro DPI. Arquivos grandes dentro do limite podem usar faixas; os limites efetivos dependem do navegador.
+
+### PDFs e fundo branco
+
+PDFs sem fundo desenhado são importados com transparência. PDFs que contêm um retângulo branco opaco mantêm esse branco por padrão: apagar toda cor branca destruiria partes da arte. A opção **Remover fundo branco externo do PDF**, aplicada antes de importar, remove pixels quase brancos conectados às bordas e preserva áreas brancas internas fechadas. Não a ative se o branco conectado à borda fizer parte do desenho. Ela não é um removedor geral de fundos coloridos ou fotografias.
+
+A rasterização do PDF pode ser escolhida em 300, 600 (padrão) ou 1200 DPI antes da importação. O limite de memória pode reduzir páginas grandes, com aviso. Aumentar DPI não recupera detalhes ausentes de imagens já rasterizadas no PDF. A exportação da montadora é PNG transparente/ZIP; não foi acrescentada exportação PDF vetorial.
+
+### Comandos da montadora
+
+```sh
+npm run dev:montadora  # desenvolvimento do módulo React/Vite
+npm run build         # verifica TypeScript e regenera montadora/
+npm start             # compila e serve toda a plataforma na porta 3000
+npm test              # testes financeiros e de mensagens
+npm run test:e2e      # compila e testa calculadora, orçamentos e montadora
+```
+
+Os testes da montadora usam imagens e PDFs sintéticos, verificam os bytes do PNG e seu DPI, transparência, branco interno/externo do PDF, rotação, folha sob medida e espaçamentos de 0, 0,2 e 0,4 cm nos quatro modos de montagem a 150, 300 e 813 DPI. A interface compilada também é exercitada em desktop e celular. O runner inicia servidores temporários nas portas 3000 e 5174.
