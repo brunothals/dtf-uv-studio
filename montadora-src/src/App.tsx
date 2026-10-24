@@ -156,7 +156,7 @@ function LazySheetPreview({
   useEffect(() => {
     setUrl(sheet.previewUrl)
     setFailed(false)
-  }, [sheet.previewUrl, sheet.index, sheet.widthPx, sheet.heightPx])
+  }, [sheet])
 
   useEffect(() => {
     if (url || failed) return
@@ -192,6 +192,9 @@ function LazySheetPreview({
 
 export default function App() {
 
+  const [previewBackground, setPreviewBackground] = useState('dark')
+  const [previewColor, setPreviewColor] = useState('#243047')
+  const [layoutInput, setLayoutInput] = useState<{ arts: ArtItem[]; config: SheetConfig } | null>(null)
   const [config, setConfig] = useState<SheetConfig>({ ...DEFAULT_CONFIG })
   /** Comprimento: '21'|'42'|'50'|'100'|'auto' (completar)|'custom' */
   const [lengthChoice, setLengthChoice] = useState<string>('42')
@@ -450,6 +453,13 @@ export default function App() {
     setArts((prev) => prev.filter((a) => a.id !== id))
   }
 
+  const removeSelectedArts = () => {
+    const ids = new Set(arts.filter((art) => selectedIds[art.id]).map((art) => art.id))
+    ids.forEach((id) => artDupKeyByIdRef.current.delete(id))
+    setArts((prev) => prev.filter((art) => !ids.has(art.id)))
+    setStatus(`${ids.size} arte(s) excluída(s).`)
+  }
+
   const clearArts = () => {
     setArts([])
     setSelectedIds({})
@@ -662,6 +672,7 @@ export default function App() {
         })
         if (cancelled) return
         setSheets(packed)
+        setLayoutInput({ arts, config: previewPackConfig })
         setPackErrors(errors)
         setPackFatalError(null)
       } catch (e) {
@@ -682,6 +693,8 @@ export default function App() {
     }
   }, [arts, previewPackConfig])
 
+  const layoutPending = layoutInput?.arts !== arts || layoutInput?.config !== previewPackConfig
+
   const exportOpts = useMemo(
     () => ({
       cropEmpty: !!config.cropEmptyExport,
@@ -689,6 +702,13 @@ export default function App() {
     }),
     [config.cropEmptyExport, config.marginMm],
   )
+
+  // A prévia acompanha o recorte da folha sem modificar o layout usado para exportar.
+  const previewSheets = useMemo(() => sheets.map((sheet) => {
+    if (!config.cropEmptyExport) return sheet
+    const geometry = resolveExportGeometry(sheet, previewDpi, exportOpts)
+    return { ...sheet, ...geometry, previewUrl: '' }
+  }), [sheets, config.cropEmptyExport, previewDpi, exportOpts])
 
   /** Recupera o mesmo layout físico em resolução de exportação; falhas não usam um preview antigo. */
   const packForExport = (): PackedSheet[] => {
@@ -832,7 +852,7 @@ export default function App() {
             checked={config.trimEnabled}
             onChange={(e) => updateConfig('trimEnabled', e.target.checked)}
           />
-          Corte
+          Recortar bordas da arte
         </label>
 
         <label className="folha-tb-check" title="Altera o tamanho da folha exportada, sem redimensionar as artes">
@@ -920,7 +940,7 @@ export default function App() {
             <button
               type="button"
               className="btn primary sm"
-              disabled={exporting}
+              disabled={exporting || loading || layoutPending}
               onClick={handleExportAll}
             >
               {sheets.length === 1 ? 'Baixar PNG' : 'Baixar ZIP'}
@@ -998,71 +1018,28 @@ export default function App() {
               <div className="dpi-readout">Completar: cresce até {MAX_AUTO_HEIGHT_CM} cm</div>
             )}
 
+            <label className="field">
+              <span>Margem (cm)</span>
+              <input type="number" min={0} step={0.1} value={mmToCmField(config.marginMm)}
+                onChange={(e) => updateConfig('marginMm', cmFieldToMm(e.target.value))} />
+            </label>
             <div className="grid-2">
-              {config.packMode === 'maxrects' ? (
-                <label className="field">
-                  <span>Espaço (cm)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    value={mmToCmField(config.gapMm)}
-                    onChange={(e) => updateConfig('gapMm', cmFieldToMm(e.target.value))}
-                  />
-                </label>
-              ) : (
-                <label className="field">
-                  <span>Lado (cm)</span>
-                  <input
-                    type="number"
-                    min={0.1}
-                    step={0.1}
-                    value={config.maxSideCm}
-                    onChange={(e) => updateConfig('maxSideCm', Number(e.target.value) || 5)}
-                  />
-                </label>
-              )}
-            </div>
-
-            {(config.packMode === 'grade' ||
-              config.packMode === 'group_rows' ||
-              config.packMode === 'group_cols') && (
-              <div className="grid-2">
-                <label className="field">
-                  <span>Espaço H (cm)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    value={mmToCmField(config.gapXMm)}
-                    onChange={(e) => updateConfig('gapXMm', cmFieldToMm(e.target.value))}
-                  />
-                </label>
-                <label className="field">
-                  <span>Espaço V (cm)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.1}
-                    value={mmToCmField(config.gapYMm)}
-                    onChange={(e) => updateConfig('gapYMm', cmFieldToMm(e.target.value))}
-                  />
-                </label>
-              </div>
-            )}
-
-            {config.packMode === 'maxrects' && (
               <label className="field">
-                <span>Lado (cm)</span>
-                <input
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={config.maxSideCm}
-                  onChange={(e) => updateConfig('maxSideCm', Number(e.target.value) || 5)}
-                />
+                <span>Espaço H (cm)</span>
+                <input type="number" min={0} step={0.1} value={mmToCmField(config.gapXMm)}
+                  onChange={(e) => updateConfig('gapXMm', cmFieldToMm(e.target.value))} />
               </label>
-            )}
+              <label className="field">
+                <span>Espaço V (cm)</span>
+                <input type="number" min={0} step={0.1} value={mmToCmField(config.gapYMm)}
+                  onChange={(e) => updateConfig('gapYMm', cmFieldToMm(e.target.value))} />
+              </label>
+            </div>
+            <label className="field">
+              <span>Lado (cm)</span>
+              <input type="number" min={0.1} step={0.1} value={config.maxSideCm}
+                onChange={(e) => updateConfig('maxSideCm', Number(e.target.value) || 5)} />
+            </label>
 
             <label className="field">
               <span>Qualidade do export</span>
@@ -1116,7 +1093,7 @@ export default function App() {
                 onChange={(e) =>
                   updateConfig(
                     'alphaThreshold',
-                    Math.min(255, Math.max(0, Number(e.target.value) || 8)),
+                    Math.min(255, Math.max(0, Number(e.target.value) || 0)),
                   )
                 }
               />
@@ -1128,7 +1105,7 @@ export default function App() {
               <p className="hint">
                 <strong>Grade</strong> enche a largura esquerda→direita. Agrupar mantém a
                 mesma arte junta. Em sob medida a altura cresce até {MAX_AUTO_HEIGHT_CM} cm.
-                Preview usa até {PREVIEW_DPI_CAP} DPI; o export reempacota no DPI
+                Preview usa até {PREVIEW_DPI_CAP} DPI; o export mantém o mesmo layout físico no DPI
                 escolhido (padrão nativo ~{nativeDpi}).
               </p>
             </details>
@@ -1150,6 +1127,24 @@ export default function App() {
                 </h2>
               </div>
             </div>
+
+            <div className="preview-controls">
+              <label className="field">
+                <span>Fundo da prévia</span>
+                <select value={previewBackground} onChange={(e) => setPreviewBackground(e.target.value)}>
+                  <option value="dark">Escuro</option>
+                  <option value="light">Claro</option>
+                  <option value="checker">Quadriculado</option>
+                  <option value="custom">Cor personalizada</option>
+                </select>
+              </label>
+              {previewBackground === 'custom' && <label className="field">
+                <span>Cor da prévia</span>
+                <input type="color" value={previewColor} onChange={(e) => setPreviewColor(e.target.value)} />
+              </label>}
+              <p className="hint">Somente visualização. PNG, ZIP e artes individuais continuam transparentes.</p>
+            </div>
+            {layoutPending && arts.length > 0 && !packFatalError && <p role="status">Atualizando montagem…</p>}
 
             {isAutoHeight && sheets.length > 0 && usedReadout != null && (
               <div className="used-readout" role="status">
@@ -1222,15 +1217,16 @@ export default function App() {
                       <button
                         type="button"
                         className="btn sm"
-                        disabled={exporting}
+                        disabled={exporting || loading || layoutPending}
                         onClick={() => handleExportOne(sheet)}
                       >
                         PNG
                       </button>
                     </div>
-                    <div className="sheet-preview checker">
+                    <div className={`sheet-preview preview-${previewBackground}${previewBackground === 'checker' ? ' checker' : ''}`}
+                      style={{ backgroundColor: previewBackground === 'custom' ? previewColor : previewBackground === 'light' ? '#f5f5f5' : previewBackground === 'dark' ? '#202634' : undefined }}>
                       <LazySheetPreview
-                        sheet={sheet}
+                        sheet={previewSheets[sheet.index] ?? sheet}
                         alt={
                           isAutoHeight
                             ? 'Pré-visualização da tira'
@@ -1255,6 +1251,8 @@ export default function App() {
               </div>
               {arts.length > 0 && (
                 <div className="art-toolbar">
+                  <button type="button" className="btn sm danger" disabled={!arts.some((art) => selectedIds[art.id])}
+                    onClick={removeSelectedArts}>Excluir selecionadas</button>
                   <button type="button" className="btn sm" onClick={selectAllArts}>
                     Todas
                   </button>
@@ -1385,9 +1383,9 @@ export default function App() {
                             type="button"
                             className="btn sm danger"
                             onClick={() => removeArt(art.id)}
-                            title="Remover"
+                            title={`Excluir arte ${art.name}`} aria-label={`Excluir arte ${art.name}`}
                           >
-                            ×
+                            Excluir arte
                           </button>
                         </td>
                       </tr>

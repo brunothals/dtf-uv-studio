@@ -117,8 +117,10 @@ export function scalePackedSheet(
       ...p,
       x: Math.round(p.x * s),
       y: Math.round(p.y * s),
-      width: roundPx(p.width * s),
-      height: roundPx(p.height * s),
+      // Bordas compartilhadas precisam arredondar para o mesmo pixel.
+      // Arredondar posição e tamanho separadamente pode sobrepor peças em 1 px.
+      width: roundPx(Math.round((p.x + p.width) * s) - Math.round(p.x * s)),
+      height: roundPx(Math.round((p.y + p.height) * s) - Math.round(p.y * s)),
     })),
   }
 }
@@ -438,7 +440,8 @@ function packMaxRects(
   const sheetW = roundPx(cmToPx(config.widthCm, config.dpi))
   const sheetH = roundPx(cmToPx(config.heightCm, config.dpi))
   const marginPx = roundDistancePx(mmToPx(config.marginMm, config.dpi))
-  const gapPx = roundDistancePx(mmToPx(config.gapMm, config.dpi))
+  const gapX = roundDistancePx(mmToPx(config.gapXMm ?? config.gapMm, config.dpi))
+  const gapY = roundDistancePx(mmToPx(config.gapYMm ?? config.gapMm, config.dpi))
   const usableW = Math.max(1, sheetW - 2 * marginPx)
   const usableH = Math.max(1, sheetH - 2 * marginPx)
 
@@ -449,8 +452,8 @@ function packMaxRects(
     const qty = Math.max(0, Math.floor(art.quantity) || 0)
     for (let q = 0; q < qty; q++) {
       rects.push({
-        width: ps.widthPx,
-        height: ps.heightPx,
+        width: ps.widthPx + gapX,
+        height: ps.heightPx + gapY,
         artId: art.id,
         name: art.name,
         source: art.trimmedCanvas,
@@ -463,7 +466,9 @@ function packMaxRects(
 
   if (rects.length === 0) return []
 
-  const packer = new MaxRectsPacker<Rectangle & PackRect>(usableW, usableH, gapPx, {
+  // Reserva espaço à direita/abaixo de cada peça, sem exigir gap extra na borda da folha.
+  // O retângulo de impressão conserva as dimensões originais (printW/printH).
+  const packer = new MaxRectsPacker<Rectangle & PackRect>(usableW + gapX, usableH + gapY, 0, {
     smart: false,
     pot: false,
     square: false,
@@ -627,7 +632,7 @@ function shrinkAutoHeightSheet(
  * - packMode grade: shelf first-fit (fileiras alinhadas; adianta peça menor no vão antes de Folha N+1)
  * - packMode group_rows / group_cols: agrupa por arte em fileiras/colunas
  * - sheetGrowMode auto_height: largura fixa, altura cresce (1 tira, máx. MAX_AUTO_HEIGHT_CM)
- * - Área útil = folha − 2×margem; maxrects usa gapMm; grade/grupos usam gapXMm/gapYMm
+ * - Área útil = folha − 2×margem; todos os modos usam gapXMm/gapYMm
  * - Rotação 90° é por arte (ArtItem.rotate90)
  */
 function packArtsAtDpi(

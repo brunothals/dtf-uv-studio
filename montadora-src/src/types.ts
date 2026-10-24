@@ -21,8 +21,8 @@ export interface SheetConfig {
   heightCm: number
   marginMm: number
   /**
-   * Gap único usado pelo modo maxrects (aproveitar espaço).
-   * Nos modos grade / group_*, prefira gapXMm / gapYMm.
+   * Espaçamento legado para normalizar configurações antigas.
+   * Todos os modos usam gapXMm / gapYMm.
    */
   gapMm: number
   /**
@@ -66,7 +66,7 @@ export interface SheetConfig {
   sheetGrowMode: SheetGrowMode
   /**
    * Se true, o PNG exportado é recortado ao bounding box das peças + margem (sem área vazia).
-   * Desligado por padrão para preservar a folha; o usuário pode ativar explicitamente.
+   * Ligado por padrão; não redimensiona as artes.
    */
   cropEmptyExport: boolean
 }
@@ -154,9 +154,9 @@ export const DEFAULT_CONFIG: SheetConfig = {
   useNativeDpi: true,
   maxSideCm: 5,
   trimEnabled: true,
-  alphaThreshold: 8,
+  alphaThreshold: 0,
   sheetGrowMode: 'fixed',
-  cropEmptyExport: false,
+  cropEmptyExport: true,
 }
 
 /**

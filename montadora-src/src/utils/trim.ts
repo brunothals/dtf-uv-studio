@@ -3,7 +3,7 @@
  * Mantém fundo transparente.
  *
  * O limiar `alphaThreshold` (t) ignora pixels com alpha < t. Assim, “poeira” de borda
- * com alpha=1 não impede o corte quando t ≥ 2 (padrão recomendado: 8). Não remove
+ * com alpha=1 não impede o corte quando t ≥ 2. O padrão zero preserva todo alpha visível. Não remove
  * fundo branco opaco — só alpha.
  */
 
@@ -119,7 +119,7 @@ export function trimToAlphaBounds(
   source: CanvasImageSource,
   srcW: number,
   srcH: number,
-  alphaThreshold = 8,
+  alphaThreshold = 0,
 ): { canvas: HTMLCanvasElement; width: number; height: number } {
   const probe = createCanvas(srcW, srcH)
   const pctx = probe.getContext('2d', { willReadFrequently: true })
@@ -138,7 +138,7 @@ export function trimToAlphaBounds(
   for (let y = 0; y < srcH; y++) {
     for (let x = 0; x < srcW; x++) {
       const a = data[(y * srcW + x) * 4 + 3]
-      if (a >= t) {
+      if (a > 0 && a >= t) {
         if (x < minX) minX = x
         if (y < minY) minY = y
         if (x > maxX) maxX = x
@@ -147,10 +147,11 @@ export function trimToAlphaBounds(
     }
   }
 
-  // Arte totalmente transparente → canvas 1×1 vazio
+  // Se o limiar esconder toda a arte, preserve os pixels visíveis antes de rejeitar.
+  // Nenhuma peça vazia deve entrar na montagem.
   if (maxX < minX || maxY < minY) {
-    const empty = createCanvas(1, 1)
-    return { canvas: empty, width: 1, height: 1 }
+    if (t > 0) return trimToAlphaBounds(source, srcW, srcH, 0)
+    throw new Error('Arte totalmente transparente: não há pixels visíveis para montar.')
   }
 
   const w = maxX - minX + 1
@@ -174,6 +175,8 @@ export function applyTrim(
   alphaThreshold: number,
 ): { canvas: HTMLCanvasElement; width: number; height: number } {
   if (!enabled) {
+    // Valida também importações com o recorte desativado.
+    trimToAlphaBounds(original, original.width, original.height, 0)
     return {
       canvas: original,
       width: original.width,

@@ -5,14 +5,14 @@ function fixturePdf(background){
  const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 72 72] /Resources << >> /Contents 4 0 R >>',`<< /Length ${content.length} >>\nstream\n${content}endstream`];
  let pdf='%PDF-1.4\n',offsets=[0];objects.forEach((o,i)=>{offsets.push(pdf.length);pdf+=`${i+1} 0 obj\n${o}\nendobj\n`;});const xref=pdf.length;pdf+='xref\n0 5\n0000000000 65535 f \n'+offsets.slice(1).map(n=>String(n).padStart(10,'0')+' 00000 n \n').join('');return pdf+`trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
 }
-test('geometria física e tamanhos invariantes com gaps 0 / 0,2 / 0,4 cm em todos os modos e DPIs',async({page})=>{
+test('geometria física e tamanhos invariantes com gaps 0 / 0,2 / 0,3 / 0,4 cm em todos os modos e DPIs',async({page})=>{
  await page.goto(dev);
  const results=await page.evaluate(async()=>{
   const {DEFAULT_CONFIG}=await import('/src/types.ts');const {packArts}=await import('/src/utils/pack.ts');
   const c=document.createElement('canvas');c.width=64;c.height=32;
   const art={id:'a',name:'Arte',trimmedCanvas:c,trimmedWidthPx:64,trimmedHeightPx:32,quantity:30,maxSideCmOverride:null,rotate90:false};
   const results=[];
-  for(const mode of ['maxrects','grade','group_rows','group_cols'])for(const gap of [0,2,4]){
+  for(const mode of ['maxrects','grade','group_rows','group_cols'])for(const gap of [0,2,3,4]){
    let canonical;
    for(const dpi of [150,300,813]){
     const cfg={...DEFAULT_CONFIG,widthCm:2,heightCm:3,maxSideCm:.2,gapMm:gap,gapXMm:gap,gapYMm:gap,packMode:mode,dpi};
@@ -27,7 +27,7 @@ test('geometria física e tamanhos invariantes com gaps 0 / 0,2 / 0,4 cm em todo
    }
   }return results;
  });
- for(const r of results){expect(r.gapOk).toBe(true);expect(r.errors).toEqual([]);expect(r.count).toBe(30);expect(r.same).toBe(true);expect(r.origin).toBe(0);expect(r.source).toBe(64);expect(Math.abs(r.width-.2)).toBeLessThanOrEqual(1.27/r.dpi);}
+ for(const r of results){expect(r.gapOk).toBe(true);expect(r.errors).toEqual([]);expect(r.count).toBe(30);expect(r.same).toBe(true);expect(r.origin).toBe(0);expect(r.source).toBe(64);expect(Math.abs(r.width-.2)).toBeLessThanOrEqual(2.54/r.dpi);}
 });
 test('PNG real mantém tamanho físico, DPI, alpha e detalhes nativos da arte de 0,2 cm',async({page})=>{
  await page.goto(dev);
@@ -38,7 +38,7 @@ test('PNG real mantém tamanho físico, DPI, alpha e detalhes nativos da arte de
   const bitmap=await createImageBitmap(blob);const decoded=document.createElement('canvas');decoded.width=bitmap.width;decoded.height=bitmap.height;const d=decoded.getContext('2d');d.drawImage(bitmap,0,0);const expected=ctx.getImageData(0,0,64,32).data,actual=d.getImageData(0,0,64,32).data;let differing=0;for(let i=0;i<actual.length;i++)if(actual[i]!==expected[i])differing++;
   return {dpi,phys,width:bitmap.width,height:bitmap.height,piece:sheet.placements[0].width,differing,alpha:d.getImageData(bitmap.width-1,bitmap.height-1,1,1).data[3],cropped:resolveExportGeometry(sheet,dpi,{cropEmpty:true}),defaultCrop:DEFAULT_CONFIG.cropEmptyExport};
  });
- expect(result.dpi).toBe(813);expect(result.piece).toBe(64);expect(result.differing).toBe(0);expect(result.alpha).toBe(0);expect(result.phys).toHaveLength(1);expect(result.phys[0].unit).toBe(1);expect(result.phys[0].x).toBe(result.phys[0].y);expect(Math.abs(result.width/result.phys[0].x*100-1)).toBeLessThan(.005);expect(Math.abs(result.height/result.phys[0].y*100-2)).toBeLessThan(.005);expect(result.defaultCrop).toBe(false);expect(result.cropped.widthPx).toBe(64);
+ expect(result.dpi).toBe(813);expect(result.piece).toBe(64);expect(result.differing).toBe(0);expect(result.alpha).toBe(0);expect(result.phys).toHaveLength(1);expect(result.phys[0].unit).toBe(1);expect(result.phys[0].x).toBe(result.phys[0].y);expect(Math.abs(result.width/result.phys[0].x*100-1)).toBeLessThan(.005);expect(Math.abs(result.height/result.phys[0].y*100-2)).toBeLessThan(.005);expect(result.defaultCrop).toBe(true);expect(result.cropped.widthPx).toBe(64);
 });
 test('PDF real: transparência e remoção opcional do branco externo preservando branco interno',async({page})=>{
  await page.goto(dev);
@@ -50,10 +50,10 @@ test('PDF real: transparência e remoção opcional do branco externo preservand
  }
 });
 test('montadora integrada: importar, espaçar, exportar, navegar e conferir celular',async({page})=>{
- await page.goto('/');await page.getByRole('link',{name:'Montadora de artes'}).click();await expect(page.getByRole('heading',{name:'Montagem de folhas'})).toBeVisible();await expect(page.getByLabel('Recortar folha ao conteúdo')).not.toBeChecked();
+ await page.goto('/');await page.getByRole('link',{name:'Montadora de artes'}).click();await expect(page.getByRole('heading',{name:'Montagem de folhas'})).toBeVisible();await expect(page.getByLabel('Recortar folha ao conteúdo')).toBeChecked();
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=64;c.height=32;c.getContext('2d').fillRect(0,0,64,32);return c.toDataURL().split(',')[1];});await page.locator('input[type=file]').first().setInputFiles({name:'detalhes.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
- await page.getByRole('combobox',{name:'Comprimento da folha',exact:true}).selectOption('custom');await page.getByRole('spinbutton',{name:'Compr. (cm)',exact:true}).fill('1');await page.getByLabel('Lado maior detalhes.png').fill('0.2');await page.getByRole('spinbutton',{name:'Espaço (cm)',exact:true}).fill('0.4');await expect(page.locator('.art-cm')).toHaveText('0.200×0.100');await expect(page.locator('.sheet-meta')).toContainText('Exportação:');
- await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('high');await expect(page.getByRole('status')).toContainText('reduz os pixels');await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('native');
+ await page.getByRole('combobox',{name:'Comprimento da folha',exact:true}).selectOption('custom');await page.getByRole('spinbutton',{name:'Compr. (cm)',exact:true}).fill('1');await page.getByLabel('Lado maior detalhes.png').fill('0.2');await page.getByRole('spinbutton',{name:'Espaço H (cm)',exact:true}).fill('0.4');await expect(page.locator('.art-cm')).toHaveText('0.200×0.100');await expect(page.locator('.sheet-meta')).toContainText('Exportação:');
+ await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('high');await expect(page.getByRole('status').filter({hasText:'A qualidade selecionada'})).toContainText('reduz os pixels');await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('native');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'PNG',exact:true}).click();expect((await download).suggestedFilename()).toMatch(/\.png$/);
  if(page.viewportSize().width<600)await page.screenshot({path:'/tmp/dtf-studio-montadora.png',fullPage:true});
  const sizes=await page.evaluate(()=>({doc:document.documentElement.scrollWidth,viewport:innerWidth}));expect(sizes.doc).toBeLessThanOrEqual(sizes.viewport);
