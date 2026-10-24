@@ -71,10 +71,10 @@ test('rotação e folha sob medida conservam o mesmo layout e a altura física e
  });
  expect(result.previewCm).toBe(result.exportCm);expect(result.exportCm).toBeCloseTo(.8,3);expect(result.direct).toEqual(result.scaled);expect(result.exportHeight).toBe(Math.round(.8*813/2.54));expect(result.width).toBe(Math.round(813/2.54));for(const d of result.dims)expect(d).toEqual([32,64,true]);
 });
-test('exportação inviável informa limite sem reduzir resolução silenciosamente',async({page})=>{
+test('PNG único grande orienta exportação em partes mantendo resolução',async({page})=>{
  await page.goto(dev);
  const error=await page.evaluate(async()=>{const {sheetToPngBlob}=await import('/src/utils/exportPng.ts');try{await sheetToPngBlob({widthPx:100000,heightPx:100000,index:0,placements:[],previewUrl:''},12700);return null}catch(e){return e.message}});
- expect(error).toContain('excede o limite seguro');expect(error).toContain('não foi reduzida automaticamente');
+ expect(error).toContain('dividida');expect(error).toContain('DPI será preservado');
 });
 
 test('PDF no aplicativo compilado carrega o worker e gera prévia sem fundo externo',async({page})=>{

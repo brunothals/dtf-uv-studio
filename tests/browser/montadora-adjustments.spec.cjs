@@ -75,7 +75,7 @@ test('exclusão individual, múltipla e última limpa montagem e conserva config
  await page.locator('input[type=file]').first().setInputFiles(['d','e'].map(n=>({name:n+'.png',mimeType:'image/png',buffer})));await expect(page.locator('.art-cm')).toHaveCount(2);await page.getByRole('button',{name:'Excluir selecionadas',exact:true}).click();await expect(page.locator('.art-cm')).toHaveCount(0);await expect(page.locator('.sheet-preview')).toHaveCount(0);
 });
 
-test('fundos só visuais: PNG real, ZIP e arte individual preservam transparência e branco',async({page})=>{
+test('fundos só visuais: PNGs reais e arte individual preservam transparência e branco',async({page})=>{
  await page.goto('/montadora/');const buffer=await pngFixture(page);await page.locator('input[type=file]').first().setInputFiles({name:'branca.png',mimeType:'image/png',buffer});await page.getByLabel('Lado maior branca.png').fill('0.2');
  await expect(page.locator('.sheet-preview img')).toBeVisible();await expect(page.locator('.sheet-preview')).toHaveCSS('background-color','rgb(32, 38, 52)');await expect(page.getByLabel('Recortar folha ao conteúdo')).toBeChecked();
  const button=page.getByRole('button',{name:'PNG',exact:true});await expect(button).toBeEnabled();const original=await download(page,button);const pixels=await decode(page,original);const preview=await page.locator('.sheet-preview img').evaluate(img=>({w:img.naturalWidth,h:img.naturalHeight}));expect(Math.abs(preview.w/preview.h-65/32)).toBeLessThan(.2);expect(pixels.white).toBeGreaterThan(1900);expect(pixels.clear).toBeGreaterThan(0);expect(pixels.soft).toBeGreaterThan(0);expect(pixels.width).toBe(65);expect(pixels.height).toBe(32);
@@ -83,11 +83,15 @@ test('fundos só visuais: PNG real, ZIP e arte individual preservam transparênc
   await page.getByLabel('Fundo da prévia').selectOption(background);if(background==='custom')await page.getByLabel('Cor da prévia').fill('#ff00ff');const next=await download(page,button);expect(next.equals(original)).toBe(true);
  }
  const art=await download(page,page.getByTitle('Baixar PNG cortado'));const individual=await decode(page,art);expect(individual).toEqual(pixels);
- // Make two sheets at low DPI to exercise the actual ZIP download without a giant buffer.
+ // Two sheets are downloaded as separate PNGs, never an archive.
  await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('fast');await page.getByLabel('Lado maior branca.png').fill('29');await page.getByLabel('Quantidade branca.png').fill('3');
- const zipButton=page.getByRole('button',{name:'Baixar ZIP',exact:true});await expect(zipButton).toBeEnabled();const zip=await download(page,zipButton);
- const zipData=await require('jszip').loadAsync(zip);const entries=await Promise.all(Object.values(zipData.files).filter(f=>!f.dir).map(async f=>({name:f.name,png:await f.async('base64')})));
- expect(entries).toHaveLength(2);for(const entry of entries){expect(entry.name).toMatch(/\.png$/);const p=await decode(page,Buffer.from(entry.png,'base64'));expect(p.white).toBeGreaterThan(0);expect(p.clear).toBeGreaterThan(0);}
+ const downloads=[];const listener=d=>downloads.push(d);page.on('download',listener);
+ const allButton=page.getByRole('button',{name:'Baixar PNGs',exact:true});await expect(allButton).toBeEnabled();await allButton.click();
+ await expect.poll(()=>downloads.length).toBe(2);await expect(allButton).toBeEnabled();page.off('download',listener);
+ expect(downloads.map(d=>d.suggestedFilename())).toEqual(['folha-01.png','folha-02.png']);
+ for(const item of downloads){const p=await decode(page,await fs.readFile(await item.path()));expect(p.white).toBeGreaterThan(0);expect(p.clear).toBeGreaterThan(0);}
+ await expect(page.getByRole('region',{name:'Partes PNG'})).toBeVisible();
+
 });
 
 test('arredondamento de pixels não sobrepõe peças adjacentes com espaço zero',async({page})=>{

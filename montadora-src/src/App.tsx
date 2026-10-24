@@ -21,10 +21,10 @@ import {
   maxQtyOneArtOnOneSheet,
 } from './utils/fillSheet'
 import {
-  buildSheetFilename,
-  buildZipFilename,
-  downloadAllSheetsZip,
-  downloadSheetPng,
+  planPngDownloads,
+  planPngParts,
+  downloadPngPart,
+  type PngDownload,
   resolveExportGeometry,
 } from './utils/exportPng'
 import { isPdfFile, loadPdfAsCanvases } from './utils/pdfImport'
@@ -89,19 +89,6 @@ function applyExportQuality(
             ? Math.max(72, Math.round(nativeDpiFallback) || EXPORT_DPI_HIGH)
             : config.dpi,
       }
-  }
-}
-
-function exportQualityLabel(quality: ExportQualityPreset, dpi: number): string {
-  switch (quality) {
-    case 'native':
-      return `Máxima (nativo ~${dpi})`
-    case 'high':
-      return 'Alta (300 DPI)'
-    case 'fast':
-      return 'Rápida (150 DPI)'
-    case 'custom':
-      return `Personalizado (${dpi} DPI)`
   }
 }
 
@@ -192,6 +179,8 @@ function LazySheetPreview({
 
 export default function App() {
 
+  const [pngDownloads, setPngDownloads] = useState<PngDownload[]>([])
+  const cancelExportRef = useRef(false)
   const [previewBackground, setPreviewBackground] = useState('dark')
   const [previewColor, setPreviewColor] = useState('#243047')
   const [layoutInput, setLayoutInput] = useState<{ arts: ArtItem[]; config: SheetConfig } | null>(null)
@@ -718,59 +707,51 @@ export default function App() {
     return packed
   }
 
-  const handleExportOne = async (sheet: PackedSheet) => {
+  const exportPngs = async (targets: PackedSheet[]) => {
     setExporting(true)
-    const qLabel = exportQualityLabel(exportQuality, effectiveDpi)
-    setStatus(`Exportando folha ${sheet.index + 1} · ${qLabel}…`)
+    cancelExportRef.current = false
+    let completed = 0
     try {
-      const exportSheets = packForExport()
-      const target =
-        exportSheets.find((s) => s.index === sheet.index) ?? exportSheets[sheet.index]
-      if (!target) throw new Error('Folha não encontrada após reempacotar para export.')
-      const filename = buildSheetFilename(target, exportSheets.length, clientName)
-      await downloadSheetPng(target, effectiveDpi, filename, exportOpts)
-      setStatus(
-        `Folha ${sheet.index + 1} exportada: ${resolveExportGeometry(target, effectiveDpi, exportOpts).widthPx}×${resolveExportGeometry(target, effectiveDpi, exportOpts).heightPx} px · ${effectiveDpi} DPI (${qLabel}).`,
-      )
+      const downloads = planPngDownloads(targets, effectiveDpi, exportOpts, clientName, sheets.length)
+      setPngDownloads(downloads)
+      for (const item of downloads) {
+        if (cancelExportRef.current) break
+        setStatus(`Gerando PNG ${completed + 1}/${downloads.length} · ${effectiveDpi} DPI…`)
+        await downloadPngPart(item)
+        completed++
+      }
+      setStatus(`${completed}/${downloads.length} PNG(s) enviados ao navegador · ${effectiveDpi} DPI. ${downloads.length > 1 ? 'Se algum download for bloqueado, use os botões das partes abaixo.' : ''}`)
     } catch (e) {
-      setStatus(e instanceof Error ? e.message : 'Erro ao exportar PNG.')
+      setStatus(e instanceof Error ? e.message : 'Erro ao exportar PNG. Use os botões das partes para tentar novamente.')
     } finally {
       setExporting(false)
     }
   }
 
-  const handleExportAll = async () => {
-    if (sheets.length === 0) return
-    setExporting(true)
-    const qLabel = exportQualityLabel(exportQuality, effectiveDpi)
-    setStatus(`Exportando · ${qLabel} (reempacotando no DPI escolhido)…`)
+  const handleExportOne = async (sheet: PackedSheet) => {
     try {
-      const exportSheets = packForExport()
-      if (exportSheets.length === 0) {
-        throw new Error('Nenhuma folha para exportar.')
-      }
-      if (exportSheets.length === 1) {
-        const filename = buildSheetFilename(exportSheets[0], 1, clientName)
-        await downloadSheetPng(exportSheets[0], effectiveDpi, filename, exportOpts)
-      } else {
-        await downloadAllSheetsZip(
-          exportSheets,
-          effectiveDpi,
-          buildZipFilename(clientName),
-          exportOpts,
-          clientName,
-        )
-      }
-      const sample = resolveExportGeometry(exportSheets[0], effectiveDpi, exportOpts)
-      setStatus(
-        `Exportação concluída: ${sample.widthPx}×${sample.heightPx} px · ${effectiveDpi} DPI (${qLabel}) · ${exportSheets.length} folha(s).`,
-      )
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : 'Erro ao exportar.')
-    } finally {
-      setExporting(false)
-    }
+      const target = packForExport().find((s) => s.index === sheet.index)
+      if (!target) throw new Error('Folha não encontrada na montagem atual.')
+      await exportPngs([target])
+    } catch (e) { setStatus(e instanceof Error ? e.message : 'Erro ao exportar PNG.') }
   }
+
+  const handleExportAll = async () => {
+    try { await exportPngs(packForExport()) }
+    catch (e) { setStatus(e instanceof Error ? e.message : 'Erro ao exportar PNG.') }
+  }
+
+  const handleDownloadPart = async (item: PngDownload) => {
+    setExporting(true)
+    try {
+      setStatus(`Gerando ${item.filename}…`)
+      await downloadPngPart(item)
+      setStatus(`${item.filename} enviado ao navegador.`)
+    } catch (e) { setStatus(e instanceof Error ? e.message : 'Erro ao exportar parte.') }
+    finally { setExporting(false) }
+  }
+
+  useEffect(() => { setPngDownloads([]); cancelExportRef.current = true }, [arts, config])
 
   const setGrowMode = (mode: SheetConfig['sheetGrowMode']) => {
     setConfig((c) => ({
@@ -943,7 +924,7 @@ export default function App() {
               disabled={exporting || loading || layoutPending}
               onClick={handleExportAll}
             >
-              {sheets.length === 1 ? 'Baixar PNG' : 'Baixar ZIP'}
+              {sheets.length === 1 && planPngParts(scalePackedSheet(sheets[0], previewDpi, effectiveDpi), effectiveDpi, exportOpts).length === 1 ? 'Baixar PNG' : 'Baixar PNGs'}
             </button>
           )}
         </div>
@@ -1142,8 +1123,19 @@ export default function App() {
                 <span>Cor da prévia</span>
                 <input type="color" value={previewColor} onChange={(e) => setPreviewColor(e.target.value)} />
               </label>}
-              <p className="hint">Somente visualização. PNG, ZIP e artes individuais continuam transparentes.</p>
+              <p className="hint">Somente visualização. Os PNGs e as artes individuais continuam transparentes.</p>
             </div>
+            <p className="hint">Folhas grandes são divididas em PNGs separados, mantendo o DPI, sem ZIP. As partes seguem linhas e colunas, sem sobreposição; a divisão pode atravessar uma arte.</p>
+            {exporting && <button className="btn sm" type="button" onClick={() => { cancelExportRef.current = true }}>Parar após esta parte</button>}
+            {pngDownloads.length > 1 && <section className="png-parts" aria-label="Partes PNG">
+              <h3>{pngDownloads.length} PNGs separados</h3>
+              <p className="hint">Permita vários downloads no navegador ou baixe cada parte abaixo. Imprima a 100%, sem ajustar à página. Os nomes indicam linha (L), coluna (C) e posição em pixels na folha exportada.</p>
+              {pngDownloads.map((item) => <button type="button" className="btn sm" key={item.filename}
+                disabled={exporting || loading || layoutPending} onClick={() => void handleDownloadPart(item)}>
+                {item.filename} · {(item.part.widthPx * 2.54 / item.dpi).toFixed(3)} × {(item.part.heightPx * 2.54 / item.dpi).toFixed(3)} cm
+              </button>)}
+            </section>}
+
             {layoutPending && arts.length > 0 && !packFatalError && <p role="status">Atualizando montagem…</p>}
 
             {isAutoHeight && sheets.length > 0 && usedReadout != null && (
@@ -1213,6 +1205,7 @@ export default function App() {
                         {sheet.placements.length} peça(s)
                         {' · '}Exportação: {(() => { const g = resolveExportGeometry(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts); return `${(g.widthPx * 2.54 / effectiveDpi).toFixed(3)} × ${(g.heightPx * 2.54 / effectiveDpi).toFixed(3)} cm` })()}
                         {config.cropEmptyExport ? ' · recortado' : ''}
+                        {' · '}{planPngParts(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts).length} PNG(s)
                       </span>
                       <button
                         type="button"

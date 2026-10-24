@@ -1,47 +1,14 @@
-import JSZip from 'jszip'
-import { saveAs } from 'file-saver'
 import type { PackedPlacement, PackedSheet } from '../types'
 import {
   applyDrawSmoothing,
   getCropRect,
-  renderSheetCanvas,
   renderSheetStrip,
   shiftPlacements,
 } from './pack'
 import { mmToPx, roundDistancePx } from './units'
 
-/** Limite seguro por dimensão (fallback se o probe falhar). */
-const FALLBACK_MAX_DIM = 8192
-/** Área máxima tentada em canvas único. */
-const SAFE_MAX_AREA = 67_000_000
-/** Altura alvo de cada faixa no render em tiles. */
-const STRIP_HEIGHT = 2048
-
-let cachedMaxDim: number | null = null
-
-/** Detecta o maior lado de canvas que o browser aceita (até 16384). */
-export function getMaxCanvasDimension(): number {
-  if (cachedMaxDim != null) return cachedMaxDim
-  const candidates = [16384, 8192, 4096]
-  for (const n of candidates) {
-    try {
-      const c = document.createElement('canvas')
-      c.width = n
-      c.height = 1
-      if (c.width === n && c.height === 1) {
-        const ctx = c.getContext('2d')
-        if (ctx) {
-          cachedMaxDim = n
-          return n
-        }
-      }
-    } catch {
-      /* tenta menor */
-    }
-  }
-  cachedMaxDim = FALLBACK_MAX_DIM
-  return cachedMaxDim
-}
+/** Limites por arquivo: até 64 MiB de pixels RGBA, sem alocar a folha inteira. */
+export const PNG_PART_LIMITS = { maxSide: 8192, maxPixels: 16 * 1024 * 1024 }
 
 /** Substitui qualquer DPI do navegador, mantendo exatamente um pHYs no PNG. */
 export function injectPhysChunk(png: ArrayBuffer, dpi: number): Blob {
@@ -129,32 +96,6 @@ function canvasToPngBuffer(canvas: HTMLCanvasElement): Promise<ArrayBuffer> {
   })
 }
 
-function tryCreateCanvas(width: number, height: number): boolean {
-  try {
-    const c = document.createElement('canvas')
-    c.width = width
-    c.height = height
-    if (c.width !== width || c.height !== height) return false
-    return !!c.getContext('2d', { alpha: true })
-  } catch {
-    return false
-  }
-}
-
-function pngChunk(type: string, data: Uint8Array): Uint8Array {
-  const typeBytes = new TextEncoder().encode(type)
-  const chunk = new Uint8Array(4 + 4 + data.length + 4)
-  const view = new DataView(chunk.buffer)
-  view.setUint32(0, data.length)
-  chunk.set(typeBytes, 4)
-  chunk.set(data, 8)
-  const crcInput = new Uint8Array(4 + data.length)
-  crcInput.set(typeBytes, 0)
-  crcInput.set(data, 4)
-  view.setUint32(8 + data.length, crc32(crcInput))
-  return chunk
-}
-
 /**
  * Renderiza um tile (clipX, clipY, tileW, tileH) da folha.
  * Desenha só placements que intersectam o retângulo.
@@ -202,184 +143,6 @@ function renderTile(
   return canvas
 }
 
-/**
- * Monta um PNG único via faixas: cada faixa vira um IDAT (PNG permite vários),
- * sem manter a folha inteira em memória.
- */
-async function encodePngStreamingStrips(
-  width: number,
-  height: number,
-  placements: PackedPlacement[],
-  dpi: number,
-): Promise<Blob> {
-  const maxDim = getMaxCanvasDimension()
-  if (width > maxDim) {
-    // Largura maior que o canvas — ZIP de tiles (ainda qualidade nativa)
-    throw new Error('WIDTH_EXCEEDS_CANVAS')
-  }
-
-  const stripH = Math.max(1, Math.min(STRIP_HEIGHT, maxDim, Math.floor(SAFE_MAX_AREA / Math.max(1, width))))
-
-  const signature = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
-  const ihdr = new Uint8Array(13)
-  const ihdrView = new DataView(ihdr.buffer)
-  ihdrView.setUint32(0, width)
-  ihdrView.setUint32(4, height)
-  ihdr[8] = 8
-  ihdr[9] = 6
-  ihdr[10] = 0
-  ihdr[11] = 0
-  ihdr[12] = 0
-
-  const ppm = Math.round(dpi / 0.0254)
-  const physData = new Uint8Array(9)
-  const physView = new DataView(physData.buffer)
-  physView.setUint32(0, ppm)
-  physView.setUint32(4, ppm)
-  physData[8] = 1
-
-  const parts: Uint8Array[] = [
-    signature,
-    pngChunk('IHDR', ihdr),
-    pngChunk('pHYs', physData),
-  ]
-
-  // Adler-32 acumulado do stream zlib (raw filtrado)
-  let adlerA = 1
-  let adlerB = 0
-  const updateAdler = (buf: Uint8Array) => {
-    for (let i = 0; i < buf.length; i++) {
-      adlerA = (adlerA + buf[i]) % 65521
-      adlerB = (adlerB + adlerA) % 65521
-    }
-  }
-
-  // zlib: um único stream deflate espalhado em vários IDAT.
-  // Estratégia simples e robusta: cada faixa = um zlib completo NÃO — PNG exige
-  // um único stream zlib concatenado. Então comprimimos cada faixa como blocos
-  // deflate "stored" ou usamos CompressionStream por faixa e... isso quebraria
-  // o stream.
-  //
-  // Abordagem correta sem guardar tudo: comprimir o raw inteiro por faixa com
-  // deflate Store (sem compressão) emitindo blocos, e um único zlib header no
-  // início + adler no fim. Qualidade PNG intacta; arquivo maior, mas OK.
-
-  // Header zlib (CMF/FLG) — método deflate, janela 32k, check bits
-  const zlibHeader = new Uint8Array([0x78, 0x01])
-  parts.push(pngChunk('IDAT', zlibHeader))
-
-  for (let y = 0; y < height; y += stripH) {
-    const h = Math.min(stripH, height - y)
-    const stripCanvas = renderTile(width, 0, y, width, h, placements)
-    const ctx = stripCanvas.getContext('2d', { alpha: true })
-    if (!ctx) throw new Error('Canvas 2D indisponível (faixa)')
-    const img = ctx.getImageData(0, 0, width, h)
-
-    // Filtrar linhas (filter None) e emitir como blocos stored do deflate
-    const rowSize = 1 + width * 4
-    const filtered = new Uint8Array(rowSize * h)
-    for (let row = 0; row < h; row++) {
-      const destOff = row * rowSize
-      filtered[destOff] = 0
-      const srcOff = row * width * 4
-      filtered.set(img.data.subarray(srcOff, srcOff + width * 4), destOff + 1)
-    }
-    updateAdler(filtered)
-
-    // Particionar em blocos stored ≤ 65535
-    let offset = 0
-    while (offset < filtered.length) {
-      const end = Math.min(offset + 65535, filtered.length)
-      const len = end - offset
-      const isLast = y + h >= height && end >= filtered.length
-      const block = new Uint8Array(5 + len)
-      block[0] = isLast ? 0x01 : 0x00
-      block[1] = len & 0xff
-      block[2] = (len >>> 8) & 0xff
-      block[3] = ~len & 0xff
-      block[4] = (~len >>> 8) & 0xff
-      block.set(filtered.subarray(offset, end), 5)
-      parts.push(pngChunk('IDAT', block))
-      offset = end
-    }
-  }
-
-  // Adler-32 trailer do zlib
-  const adlerFooter = new Uint8Array(4)
-  new DataView(adlerFooter.buffer).setUint32(0, ((adlerB << 16) | adlerA) >>> 0)
-  parts.push(pngChunk('IDAT', adlerFooter))
-  parts.push(pngChunk('IEND', new Uint8Array(0)))
-
-  // Concatena
-  let total = 0
-  for (const p of parts) total += p.length
-  const out = new Uint8Array(total)
-  let o = 0
-  for (const p of parts) {
-    out.set(p, o)
-    o += p.length
-  }
-  return new Blob([out], { type: 'image/png' })
-}
-
-/** ZIP de faixas/tiles em qualidade nativa — só se um PNG único for inviável. */
-async function renderMultiFileZipFallback(
-  widthPx: number,
-  heightPx: number,
-  placements: PackedPlacement[],
-  dpi: number,
-): Promise<Blob> {
-  const zip = new JSZip()
-  const maxDim = getMaxCanvasDimension()
-  const tileW = Math.min(widthPx, maxDim)
-  const tileH = Math.max(1, Math.min(STRIP_HEIGHT, maxDim, Math.floor(SAFE_MAX_AREA / tileW)))
-
-  let idx = 0
-  for (let y = 0; y < heightPx; y += tileH) {
-    const h = Math.min(tileH, heightPx - y)
-    for (let x = 0; x < widthPx; x += tileW) {
-      const w = Math.min(tileW, widthPx - x)
-      const tile = renderTile(widthPx, x, y, w, h, placements)
-      const buf = await canvasToPngBuffer(tile)
-      const blob = injectPhysChunk(buf, dpi)
-      const name =
-        widthPx <= maxDim
-          ? `faixa-${String(++idx).padStart(2, '0')}-y${y}.png`
-          : `tile-${String(++idx).padStart(2, '0')}-x${x}-y${y}.png`
-      zip.file(name, blob)
-    }
-  }
-  zip.file(
-    'LEIA-ME.txt',
-    `Folha ${widthPx}×${heightPx} px (~${dpi} DPI) excedeu o limite de canvas do navegador.\n` +
-      `As faixas/tiles estão em qualidade nativa (PNG sem perda).\n` +
-      `Una-as na ordem (Y crescente; se houver X, da esquerda para a direita) em um editor.\n`,
-  )
-  return zip.generateAsync({ type: 'blob' })
-}
-
-async function renderTiledPng(
-  widthPx: number,
-  heightPx: number,
-  placements: PackedPlacement[],
-  dpi: number,
-): Promise<Blob> {
-  try {
-    return await encodePngStreamingStrips(widthPx, heightPx, placements, dpi)
-  } catch (e) {
-    console.warn('PNG em faixas falhou, usando ZIP de tiles:', e)
-    return renderMultiFileZipFallback(widthPx, heightPx, placements, dpi)
-  }
-}
-
-function isZipBlob(blob: Blob): boolean {
-  return (
-    blob.type === 'application/zip' ||
-    blob.type.includes('zip') ||
-    blob.type === 'application/x-zip-compressed'
-  )
-}
-
 export interface SheetExportOptions {
   /** Recortar ao bbox das peças + margem (mm). */
   cropEmpty?: boolean
@@ -412,53 +175,74 @@ export function resolveExportGeometry(
   }
 }
 
+export interface PngPart {
+  index: number
+  row: number
+  column: number
+  x: number
+  y: number
+  widthPx: number
+  heightPx: number
+}
+
+/** Planeja recortes sem criar canvases nem um buffer do tamanho total da folha. */
+export function planPngParts(
+  sheet: PackedSheet,
+  dpi: number,
+  options?: SheetExportOptions,
+  limits = PNG_PART_LIMITS,
+): PngPart[] {
+  const { widthPx: width, heightPx: height } = resolveExportGeometry(sheet, dpi, options)
+  if (![width, height, limits.maxSide, limits.maxPixels].every((n) => Number.isSafeInteger(n) && n > 0)) {
+    throw new Error('Dimensões inválidas para dividir a folha em PNGs.')
+  }
+  const side = Math.floor(Math.sqrt(limits.maxPixels))
+  const tileW = Math.min(width, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / Math.min(height, side))))
+  const tileH = Math.min(height, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / tileW)))
+  const parts: PngPart[] = []
+  for (let y = 0, row = 1; y < height; y += tileH, row++) {
+    for (let x = 0, column = 1; x < width; x += tileW, column++) {
+      parts.push({ index: parts.length, row, column, x, y, widthPx: Math.min(tileW, width - x), heightPx: Math.min(tileH, height - y) })
+    }
+  }
+  return parts
+}
+
+/** Renderiza somente uma parte, usando as fontes originais, sem reduzir DPI. */
+export async function sheetPartToPngBlob(
+  sheet: PackedSheet,
+  dpi: number,
+  part: PngPart,
+  options?: SheetExportOptions,
+): Promise<Blob> {
+  const geometry = resolveExportGeometry(sheet, dpi, options)
+  if (part.x < 0 || part.y < 0 || part.widthPx <= 0 || part.heightPx <= 0 ||
+      part.x + part.widthPx > geometry.widthPx || part.y + part.heightPx > geometry.heightPx ||
+      part.widthPx > PNG_PART_LIMITS.maxSide || part.heightPx > PNG_PART_LIMITS.maxSide ||
+      part.widthPx * part.heightPx > PNG_PART_LIMITS.maxPixels) {
+    throw new Error('Parte fora dos limites seguros da folha.')
+  }
+  const canvas = renderTile(geometry.widthPx, part.x, part.y, part.widthPx, part.heightPx, geometry.placements)
+  try {
+    if (canvas.width !== part.widthPx || canvas.height !== part.heightPx) throw new Error('O navegador não conseguiu criar esta parte da folha.')
+    return injectPhysChunk(await canvasToPngBuffer(canvas), dpi)
+  } finally {
+    // Libera os pixels antes de processar a próxima parte.
+    canvas.width = 0
+    canvas.height = 0
+  }
+}
+
 export async function sheetToPngBlob(
   sheet: PackedSheet,
   dpi: number,
   placements?: PackedPlacement[],
   options?: SheetExportOptions,
 ): Promise<Blob> {
-  let widthPx = sheet.widthPx
-  let heightPx = sheet.heightPx
-  let pls = placements ?? sheet.placements
-
-  if (options?.cropEmpty && placements == null) {
-    const geo = resolveExportGeometry(sheet, dpi, options)
-    widthPx = geo.widthPx
-    heightPx = geo.heightPx
-    pls = geo.placements
-  } else if (placements != null && options?.cropEmpty) {
-    // placements já fornecidos — aplica crop sobre eles com sheet dims
-    const geo = resolveExportGeometry(
-      { ...sheet, placements: pls },
-      dpi,
-      options,
-    )
-    widthPx = geo.widthPx
-    heightPx = geo.heightPx
-    pls = geo.placements
-  }
-
-  // A exportação em faixas também acumula bytes: rejeite arquivos inviáveis sem reduzir qualidade.
-  if (widthPx * heightPx * 4 > 512 * 1024 * 1024) {
-    throw new Error('A folha nesta resolução excede o limite seguro de exportação. Ative “Recortar folha ao conteúdo”, reduza a folha ou escolha outro DPI. A resolução não foi reduzida automaticamente.')
-  }
-  // Preferir encoder PNG nativo do browser (toBlob) sempre que o canvas couber.
-  // SAFE_MAX_AREA não bloqueia mais: só caímos em faixas/ZIP se createCanvas falhar.
-  if (widthPx * heightPx <= SAFE_MAX_AREA && tryCreateCanvas(widthPx, heightPx)) {
-    try {
-      const canvas = renderSheetCanvas(widthPx, heightPx, pls)
-      // Sanity: canvas real bate com o pedido (evita canvas “clampado” silencioso)
-      if (canvas.width === widthPx && canvas.height === heightPx) {
-        const buf = await canvasToPngBuffer(canvas)
-        return injectPhysChunk(buf, dpi)
-      }
-    } catch {
-      /* tiled */
-    }
-  }
-
-  return renderTiledPng(widthPx, heightPx, pls, dpi)
+  const target = placements ? { ...sheet, placements } : sheet
+  const parts = planPngParts(target, dpi, options)
+  if (parts.length !== 1) throw new Error(`A folha precisa ser dividida em ${parts.length} PNGs. Use a exportação em partes; o DPI será preservado.`)
+  return sheetPartToPngBlob(target, dpi, parts[0], options)
 }
 
 /** Sanitiza nome do cliente para uso em nome de arquivo. */
@@ -486,50 +270,37 @@ export function buildSheetFilename(
   return withPrefix(`folha-${String(sheet.index + 1).padStart(2, '0')}.png`)
 }
 
-export function buildZipFilename(clientName?: string): string {
-  const prefix = clientName ? sanitizeClientFilename(clientName) : ''
-  return prefix ? `${prefix}_folhas.zip` : 'gang-sheets.zip'
+export interface PngDownload {
+  sheet: PackedSheet
+  dpi: number
+  part: PngPart
+  filename: string
+  options?: SheetExportOptions
 }
 
-export async function downloadSheetPng(
-  sheet: PackedSheet,
-  dpi: number,
-  filename?: string,
-  options?: SheetExportOptions,
-): Promise<void> {
-  const blob = await sheetToPngBlob(sheet, dpi, undefined, options)
-  const base = filename ?? `folha-${sheet.index + 1}.png`
-  // Detecta ZIP pelo magic PK
-  let name = base
-  const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
-  if ((head[0] === 0x50 && head[1] === 0x4b) || isZipBlob(blob)) {
-    name = base.replace(/\.png$/i, '') + '-faixas.zip'
-  }
-  saveAs(blob, name)
+export function planPngDownloads(sheets: PackedSheet[], dpi: number, options?: SheetExportOptions, clientName?: string, totalSheets = sheets.length): PngDownload[] {
+  return sheets.flatMap((sheet) => {
+    const base = buildSheetFilename(sheet, totalSheets, clientName)
+    const parts = planPngParts(sheet, dpi, options)
+    return parts.map((part) => ({ sheet, dpi, part, options, filename: parts.length === 1 ? base :
+      `${base.replace(/\.png$/i, '')}-parte-${String(part.index + 1).padStart(2, '0')}-L${part.row}-C${part.column}-x${part.x}-y${part.y}.png` }))
+  })
 }
 
-export async function downloadAllSheetsZip(
-  sheets: PackedSheet[],
-  dpi: number,
-  zipName = 'gang-sheets.zip',
-  options?: SheetExportOptions,
-  clientName?: string,
-): Promise<void> {
-  const zip = new JSZip()
-  const prefix = clientName ? sanitizeClientFilename(clientName) : ''
-  for (const sheet of sheets) {
-    const blob = await sheetToPngBlob(sheet, dpi, undefined, options)
-    const head = new Uint8Array(await blob.slice(0, 2).arrayBuffer())
-    const nestedZip = head[0] === 0x50 && head[1] === 0x4b
-    const base = prefix
-      ? `${prefix}_folha-${String(sheet.index + 1).padStart(2, '0')}`
-      : `folha-${String(sheet.index + 1).padStart(2, '0')}`
-    if (nestedZip) {
-      zip.file(`${base}-faixas.zip`, blob)
-    } else {
-      zip.file(`${base}.png`, blob)
-    }
+/** Um único Blob e URL de download por vez; sem ZIP nem bytes de outras partes retidos. */
+export async function downloadPngPart(item: PngDownload): Promise<void> {
+  const blob = await sheetPartToPngBlob(item.sheet, item.dpi, item.part, item.options)
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = item.filename
+  document.body.appendChild(anchor)
+  try {
+    anchor.click()
+    // Dá tempo ao navegador para iniciar o download antes de liberar a URL.
+    await new Promise((resolve) => window.setTimeout(resolve, 1000))
+  } finally {
+    anchor.remove()
+    URL.revokeObjectURL(url)
   }
-  const content = await zip.generateAsync({ type: 'blob' })
-  saveAs(content, zipName)
 }
