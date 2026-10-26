@@ -31,6 +31,7 @@ import {
 import { isPdfFile, loadPdfAsCanvases } from './utils/pdfImport'
 import { cmToPx, computeNativeExportDpi, resolveExportDpi, roundPx } from './utils/units'
 import { resizeArt } from './utils/artEditing'
+import { fitArtToBox, parseCalcPrefill } from './utils/calcPrefill'
 import './App.css'
 
 /** DPI máximo para packing/preview ao vivo (export reempacota no DPI escolhido). */
@@ -234,10 +235,16 @@ export default function App() {
   const [previewBackground, setPreviewBackground] = useState('dark')
   const [previewColor, setPreviewColor] = useState('#243047')
   const [layoutInput, setLayoutInput] = useState<{ arts: ArtItem[]; config: SheetConfig } | null>(null)
-  const [config, setConfig] = useState<SheetConfig>({ ...DEFAULT_CONFIG })
+  /** Folha calculada na calculadora (somente leitura da URL, nada é enviado ou persistido). */
+  const [calcPrefill] = useState(() => parseCalcPrefill(window.location.search))
+  const prefillIndexRef = useRef(0)
+  const [prefillUsed, setPrefillUsed] = useState(0)
+  const [config, setConfig] = useState<SheetConfig>(() => calcPrefill
+    ? { ...DEFAULT_CONFIG, widthCm: calcPrefill.widthCm, heightCm: calcPrefill.heightCm, ...(calcPrefill.gapMm != null ? { gapMm: calcPrefill.gapMm, gapXMm: calcPrefill.gapMm, gapYMm: calcPrefill.gapMm } : {}) }
+    : { ...DEFAULT_CONFIG })
   /** Comprimento: '21'|'42'|'50'|'100'|'auto' (completar)|'custom' */
-  const [widthChoice, setWidthChoice] = useState('29')
-  const [lengthChoice, setLengthChoice] = useState<string>('42')
+  const [widthChoice, setWidthChoice] = useState(() => !calcPrefill ? '29' : ['29', '41'].includes(String(calcPrefill.widthCm)) ? String(calcPrefill.widthCm) : 'custom')
+  const [lengthChoice, setLengthChoice] = useState<string>(() => !calcPrefill ? '42' : ['21', '42', '50', '100'].includes(String(calcPrefill.heightCm)) ? String(calcPrefill.heightCm) : 'custom')
   const [arts, setArts] = useState<ArtItem[]>([])
   const [sheets, setSheets] = useState<PackedSheet[]>([])
   const [packErrors, setPackErrors] = useState<string[]>([])
@@ -463,6 +470,16 @@ export default function App() {
       }
     }
 
+    // Artes importadas recebem, na ordem, as medidas e quantidades vindas da calculadora.
+    let prefilledNow = 0
+    if (calcPrefill) {
+      for (let i = 0; i < next.length && prefillIndexRef.current < calcPrefill.arts.length; i++) {
+        next[i] = fitArtToBox(next[i], calcPrefill.arts[prefillIndexRef.current], config.maxSideCm)
+        prefillIndexRef.current++
+        prefilledNow++
+      }
+      if (prefilledNow) setPrefillUsed(prefillIndexRef.current)
+    }
     if (next.length > 0) {
       setArts((prev) => [...prev, ...next])
       trimKeyRef.current = `${config.trimEnabled}:${config.alphaThreshold}`
@@ -483,6 +500,7 @@ export default function App() {
       )
     }
     if (pdfCapped > 0) parts.push(`${pdfCapped} página(s) reduzida(s) pelo limite de memória`)
+    if (prefilledNow) parts.push(`${prefilledNow} com medida e quantidade da calculadora`)
     if (anyCropped) parts.push('bordas transparentes cortadas')
     if (largeWarns.length > 0) {
       parts.push(
@@ -857,6 +875,16 @@ export default function App() {
         </div>
       </header>
 
+      {calcPrefill && <section className="calc-prefill" aria-label="Folha vinda da calculadora">
+        <p className="section-kicker">Vinda da calculadora</p>
+        <p>Folha {calcPrefill.widthCm.toLocaleString('pt-BR')} × {calcPrefill.heightCm.toLocaleString('pt-BR')} cm{calcPrefill.gapMm != null ? ` · espaçamento ${(calcPrefill.gapMm / 10).toLocaleString('pt-BR')} cm` : ''} já preenchidos.</p>
+        {calcPrefill.arts.length > 0 && <>
+          <p className="hint">Importe as imagens na mesma ordem da lista: cada arte importada recebe a quantidade e a medida calculadas (cabendo no tamanho indicado, sem deformar a imagem).</p>
+          <ol className="calc-prefill-list">
+            {calcPrefill.arts.map((a, i) => <li key={i} className={i < prefillUsed ? 'is-done' : ''}>Arte {i + 1}: {a.widthCm.toLocaleString('pt-BR')} × {a.heightCm.toLocaleString('pt-BR')} cm · {a.quantity} un.{i < prefillUsed ? ' · aplicada' : ''}</li>)}
+          </ol>
+        </>}
+      </section>}
       {effectiveDpi < nativeDpi && <p role="status" className="hint">A qualidade selecionada reduz os pixels das artes. Use Máxima para preservar os detalhes originais, especialmente em artes pequenas.</p>}
       {/* Barra superior — ações frequentes */}
       <div className="folha-toolbar">
