@@ -100,6 +100,11 @@ canvas{display:block;border-radius:7px;max-width:100%}
 .qr-note{font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;margin-top:10px;text-align:center;line-height:1.5}
 .bsm{height:30px;padding:0 11px;background:transparent;border:1px solid var(--b2);border-radius:6px;color:var(--t2);font-size:11px;font-family:'JetBrains Mono',monospace;cursor:pointer;transition:all .15s;white-space:nowrap}
 .bsm:hover{border-color:var(--accent);color:var(--accent)}
+a.bsm{display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.bsm-strong{border-color:var(--accent);color:var(--accent)}
+.comp-note{padding:12px 14px 0;margin:0}
+.mix-cell{font-size:10px;color:var(--t3);white-space:nowrap}
+.ctable td:first-child{white-space:nowrap}
 .fbadge{display:inline-flex;align-items:center;background:var(--s2);border:1px solid var(--b2);border-radius:5px;padding:3px 9px;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--green)}
 .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--b1);border:1px solid var(--b1);border-radius:var(--rl);overflow:hidden;margin-bottom:12px}
 .sumitem{background:var(--s1);padding:13px 12px}
@@ -133,6 +138,7 @@ canvas{display:block;border-radius:7px;max-width:100%}
   .maintab{font-size:11px;min-height:38px;height:auto;padding:8px 6px}
   .btn-row{display:grid;grid-template-columns:1fr}
   .bclean{width:100%}
+  .badd{width:100%;min-height:42px;height:auto;padding:8px 12px}
   .saved-item{display:grid;grid-template-columns:1fr}
   .saved-actions{justify-content:stretch}
   .saved-actions .bsm{flex:1}
@@ -159,7 +165,7 @@ canvas{display:block;border-radius:7px;max-width:100%}
     </svg>
   </div>
   <span class="htitle">DTF UV Studio</span><a href="montadora/" style="color:var(--accent);font-size:12px;margin-left:auto">Montadora de artes →</a>
-  <span class="hbadge">v4.7</span>
+  <span class="hbadge">v4.8</span>
 </header>
 
 <div class="wrap">
@@ -168,7 +174,7 @@ canvas{display:block;border-radius:7px;max-width:100%}
     <p class="ctitle">Dados do pedido</p>
     <div class="g2">
       <div><label>Nome do cliente</label><input type="text" id="client-name" placeholder="ex: Maria Silva"></div>
-      <div><label>Anuncio da venda</label><input type="text" id="sale-ad" placeholder="ex: Instagram - copos personalizados"></div>
+      <div><label>Anúncio da venda</label><input type="text" id="sale-ad" placeholder="ex: Instagram - copos personalizados"></div>
     </div>
     <div class="saved-list" id="saved-list"></div>
     <div class="saved-detail">
@@ -178,7 +184,7 @@ canvas{display:block;border-radius:7px;max-width:100%}
   </div>
 
   <div class="card">
-    <p class="ctitle">Modo de calculo</p>
+    <p class="ctitle">Modo de cálculo</p>
     <div class="maintabs">
       <button class="maintab on" id="main-normal" onclick="setMainMode('normal')">Tenho a folha - quantas artes cabem?</button>
       <button class="maintab" id="main-inv" onclick="setMainMode('inv')">Tenho as artes - qual folha usar?</button>
@@ -186,7 +192,7 @@ canvas{display:block;border-radius:7px;max-width:100%}
   </div>
 
   <div class="card" id="card-folha">
-    <p class="ctitle">Folha &amp; configuracao</p>
+    <p class="ctitle">Folha &amp; configuração</p>
     <div class="g3" style="margin-bottom:11px">
       <div>
         <label>Tamanho da folha</label>
@@ -199,25 +205,25 @@ canvas{display:block;border-radius:7px;max-width:100%}
         </select>
       </div>
       <div>
-        <label>Espacamento entre artes (cm)</label>
+        <label>Espaçamento entre artes (cm)</label>
         <input type="number" id="esp" value="0.3" step="0.1" min="0" max="5">
       </div>
       <div>
-        <label>Comprimento custom (cm)</label>
+        <label>Comprimento personalizado (cm)</label>
         <input type="number" id="fh-custom" value="60" min="1" disabled style="opacity:.35">
       </div>
     </div>
     <div class="trow" style="margin-top:0">
       <label class="tog"><input type="checkbox" id="rotacao" checked><span class="tslider"></span></label>
-      <span class="tlabel">Rotacao automatica - testa 90 graus para encaixar mais</span>
+      <span class="tlabel">Rotação automática - testa 90° para encaixar mais</span>
     </div>
   </div>
 
   <div class="card" id="card-normal">
-    <p class="ctitle">Arte principal</p>
+    <p class="ctitle">Artes da folha</p>
     <div class="mtabs">
       <button class="mtab on" id="mt-fill" onclick="setMode('fill')">Preencher folha</button>
-      <button class="mtab" id="mt-multi" onclick="setMode('multi')">Multiplas artes</button>
+      <button class="mtab" id="mt-multi" onclick="setMode('multi')">Múltiplas artes</button>
     </div>
     <div id="mode-fill">
       <p class="hint">Informe a medida e a calculadora preenche a folha toda automaticamente.</p>
@@ -228,38 +234,49 @@ canvas{display:block;border-radius:7px;max-width:100%}
       </div>
     </div>
     <div id="mode-multi" style="display:none">
-      <p class="hint">Adicione artes com tamanhos e quantidades diferentes.</p>
+      <p class="hint">Adicione artes com tamanhos e quantidades diferentes. O comparativo considera todas elas, na proporção das quantidades.</p>
       <div id="arts-list"></div>
-      <button class="badd" onclick="addArt()">+ Adicionar arte</button>
+      <button class="badd" id="add-art-normal" onclick="addArt()">+ Adicionar outro tamanho nesta folha</button>
     </div>
     <div class="s2box">
       <p class="s2title">&#8618; Segunda arte proporcional (opcional)</p>
-      <p class="s2hint">Para aproveitar o espaco restante. Mesma proporcao da arte principal.<br>Ex: principal 10x8 -> segunda pode ser 5x4 ou 7,5x6</p>
+      <p class="s2hint">Para aproveitar o espaço restante. Mesma proporção da arte principal.<br>Ex.: principal 10x8 → segunda pode ser 5x4 ou 7,5x6</p>
       <div class="g3">
-        <div><label>Largura 2a arte (cm)</label><input type="number" id="s2w" placeholder="ex: 5" step="0.1" min="0.1"></div>
-        <div><label>Altura 2a arte (cm)</label><input type="number" id="s2h" placeholder="ex: 4" step="0.1" min="0.1"></div>
-        <div><label>Cor 2a arte</label><input type="text" id="s2-color" placeholder="ex: preto"></div>
+        <div><label>Largura 2ª arte (cm)</label><input type="number" id="s2w" placeholder="ex: 5" step="0.1" min="0.1"></div>
+        <div><label>Altura 2ª arte (cm)</label><input type="number" id="s2h" placeholder="ex: 4" step="0.1" min="0.1"></div>
+        <div><label>Cor 2ª arte</label><input type="text" id="s2-color" placeholder="ex: preto"></div>
       </div>
     </div>
   </div>
 
   <div class="card" id="card-inv" style="display:none">
     <p class="ctitle">Artes do pedido</p>
-    <p class="hint">Informe todas as artes e quantidades. A calculadora encontra o menor tamanho real de folha necessario (largura fixa 29cm).</p>
+    <p class="hint">Informe todas as artes e quantidades. A calculadora encontra o menor tamanho real de folha necessário (largura fixa 29 cm).</p>
     <div id="arts-list-inv"></div>
-    <button class="badd" onclick="addArtInv()">+ Adicionar arte</button>
+    <button class="badd" id="add-art-inv" onclick="addArtInv()">+ Adicionar arte ao pedido</button>
     <div class="g2" style="margin-top:12px">
       <div>
-        <label>Espacamento entre artes (cm)</label>
+        <label>Espaçamento entre artes (cm)</label>
         <input type="number" id="esp-inv" value="0.3" step="0.1" min="0" max="5">
       </div>
       <div style="display:flex;align-items:flex-end;padding-bottom:2px">
         <div class="trow" style="margin-top:0">
           <label class="tog"><input type="checkbox" id="rotacao-inv" checked><span class="tslider"></span></label>
-          <span class="tlabel">Rotacao automatica</span>
+          <span class="tlabel">Rotação automática</span>
         </div>
       </div>
     </div>
+  </div>
+
+  <div class="card" id="card-precos">
+    <p class="ctitle">Preços e revenda (opcional)</p>
+    <p class="hint">Usados só no comparativo. Ficam salvos neste navegador. Sem valores, a calculadora mostra apenas o custo.</p>
+    <div class="g3">
+      <div><label for="resale-mode">Revenda por arte/cartela</label><select id="resale-mode" onchange="onPricingInput()"><option value="off">Não calcular</option><option value="unit">Preço de venda por arte (R$)</option><option value="markup">Margem sobre o custo (%)</option></select></div>
+      <div><label for="resale-value" id="resale-value-label">Valor da revenda</label><input type="text" inputmode="decimal" id="resale-value" placeholder="escolha o tipo ao lado" autocomplete="off" oninput="onPricingInput()" disabled></div>
+      <div><label for="price-per-cm">Folha sob medida: R$ por cm de comprimento</label><input type="text" inputmode="decimal" id="price-per-cm" placeholder="vazio = estimativa" autocomplete="off" oninput="onPricingInput()"></div>
+    </div>
+    <p class="hint" id="pricing-hint" style="margin:10px 0 0"></p>
   </div>
 
   <div class="btn-row">
@@ -278,13 +295,14 @@ canvas{display:block;border-radius:7px;max-width:100%}
           <button class="bsm" onclick="copiarResumo()">Copiar resumo</button>
           <button class="bsm" onclick="salvarPedido()">Salvar pedido</button>
           <button class="bsm" onclick="abrirQR()">&#9634; QR Code</button>
+          <a class="bsm bsm-strong" id="montadora-link" href="montadora/" target="_blank" rel="noopener">Montar esta folha na montadora</a>
         </div>
       </div>
       <canvas id="canvas"></canvas>
       <div class="legend" id="legend"></div>
     </div>
     <div id="s2-result" style="display:none">
-      <div class="sechead"><div class="secline"></div><span class="sectag">Segunda arte - espaco restante</span><div class="secline"></div></div>
+      <div class="sechead"><div class="secline"></div><span class="sectag">Segunda arte - espaço restante</span><div class="secline"></div></div>
       <div class="stats" id="s2-stats"></div>
       <div class="cbox">
         <div class="chead"><p class="ctitle" style="margin:0">Layout com as duas artes</p></div>
@@ -292,15 +310,15 @@ canvas{display:block;border-radius:7px;max-width:100%}
         <div class="legend" id="legend2"></div>
       </div>
     </div>
-    <div class="sechead"><div class="secline"></div><span class="sectag">Comparativo de folhas padrao</span><div class="secline"></div></div>
+    <div class="sechead"><div class="secline"></div><span class="sectag">Comparativo de folhas (todas as artes)</span><div class="secline"></div></div>
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="overflow-x:auto"><table class="ctable" id="comp-table"></table></div><button class="bcalc" style="width:100%;margin-top:16px" onclick="openQuote()">Gerar orçamento</button>
+      <div style="overflow-x:auto"><table class="ctable" id="comp-table"></table></div><p class="hint comp-note" id="comp-note"></p><button class="bcalc" style="width:100%;margin-top:16px" onclick="openQuote()">Gerar orçamento</button>
     </div>
   </div>
 
   <div id="result-inv">
     <div class="ideal-box">
-      <p class="ideal-label">Tamanho minimo real de folha</p>
+      <p class="ideal-label">Tamanho mínimo real de folha</p>
       <p class="ideal-val" id="inv-size">29 x 0 cm</p>
       <p class="ideal-unit">largura x comprimento</p>
       <p class="ideal-sub" id="inv-sub"></p>
@@ -314,14 +332,15 @@ canvas{display:block;border-radius:7px;max-width:100%}
           <span class="fbadge" id="fbadge-inv"></span>
           <button class="bsm" onclick="copiarResumo()">Copiar resumo</button>
           <button class="bsm" onclick="salvarPedido()">Salvar pedido</button>
+          <a class="bsm bsm-strong" id="montadora-link-inv" href="montadora/" target="_blank" rel="noopener">Montar esta folha na montadora</a>
         </div>
       </div>
       <canvas id="canvas-inv"></canvas>
       <div class="legend" id="legend-inv"></div>
     </div>
-    <div class="sechead"><div class="secline"></div><span class="sectag">Comparativo com folhas padrao</span><div class="secline"></div></div>
+    <div class="sechead"><div class="secline"></div><span class="sectag">Comparativo com folhas padrão</span><div class="secline"></div></div>
     <div class="card" style="padding:0;overflow:hidden">
-      <div style="overflow-x:auto"><table class="ctable" id="comp-table-inv"></table></div><button class="bcalc" style="width:100%;margin-top:16px" onclick="openQuote()">Gerar orçamento</button>
+      <div style="overflow-x:auto"><table class="ctable" id="comp-table-inv"></table></div><p class="hint comp-note" id="comp-note-inv"></p><button class="bcalc" style="width:100%;margin-top:16px" onclick="openQuote()">Gerar orçamento</button>
     </div>
   </div>
 
@@ -335,7 +354,7 @@ canvas{display:block;border-radius:7px;max-width:100%}
     <p class="qr-mtitle">QR Code do pedido</p>
     <div class="qr-img-wrap"><canvas id="qr-canvas" width="160" height="160" aria-label="QR Code"></canvas></div>
     <div class="qr-lines" id="qr-lines"></div>
-    <p class="qr-note">Aponte a camera do celular para<br>visualizar o resumo do pedido.</p>
+    <p class="qr-note">Aponte a câmera do celular para<br>visualizar o resumo do pedido.</p>
   </div>
 </div>
 
@@ -349,6 +368,9 @@ const FOLHAS_PAD=[
   {label:'29 x 100 cm',w:29,h:100,cost:99}
 ];
 const ORDERS_KEY='dtfuv_orders_v1';
+const PRICING_KEY='dtf-pricing-preferences';
+// Tabela de preços em centavos inteiros, derivada de FOLHAS_PAD.
+const PRICE_TABLE=FOLHAS_PAD.map(function(f){return{h:f.h,price:Quote.cents(String(f.cost))};});
 let quoteRows=[];
 let artCount=0,artCountInv=0,currentMode='fill',mainMode='normal',lastResult=null;
 
@@ -412,7 +434,7 @@ function getFolha(){
   var v=document.getElementById('folha-sel').value;
   if(v==='custom'){
     var h=parseFloat(document.getElementById('fh-custom').value)||60;
-    return{w:29,h:h,label:'29 x '+h+' cm',cost:0,costLabel:'custom'};
+    return{w:29,h:h,label:'29 x '+h+' cm',cost:0,costLabel:'custom',custom:true};
   }
   var parts=v.split('x');
   var preset=FOLHAS_PAD.find(function(f){return f.w===parseFloat(parts[0])&&f.h===parseFloat(parts[1]);});
@@ -421,6 +443,125 @@ function getFolha(){
 function onFolhaSel(){
   var v=document.getElementById('folha-sel').value,el=document.getElementById('fh-custom');
   el.disabled=v!=='custom';el.style.opacity=v==='custom'?'1':'.35';
+  updatePricingHint();
+}
+
+// Espaçamento: 0 é válido (mesmo comportamento da montadora); campo vazio/inválido é bloqueado antes do cálculo.
+function readEsp(id){
+  var v=parseFloat(String(document.getElementById(id).value).replace(',','.'));
+  return Number.isFinite(v)&&v>=0?v:null;
+}
+
+// ---- Preços e revenda (opcionais, persistidos apenas neste navegador) ----
+function loadPricing(){
+  var p={};
+  try{p=JSON.parse(localStorage.getItem(PRICING_KEY)||'{}')||{};}catch(e){p={};}
+  var mode=['off','unit','markup'].indexOf(p.resaleMode)>=0?p.resaleMode:'off';
+  document.getElementById('resale-mode').value=mode;
+  document.getElementById('resale-value').value=typeof p.resaleValue==='string'?p.resaleValue:'';
+  document.getElementById('price-per-cm').value=typeof p.pricePerCm==='string'?p.pricePerCm:'';
+  syncResaleField();updatePricingHint();
+}
+function savePricing(){
+  try{localStorage.setItem(PRICING_KEY,JSON.stringify({
+    resaleMode:document.getElementById('resale-mode').value,
+    resaleValue:document.getElementById('resale-value').value.trim(),
+    pricePerCm:document.getElementById('price-per-cm').value.trim()
+  }));}catch(e){}
+}
+function syncResaleField(){
+  var mode=document.getElementById('resale-mode').value,el=document.getElementById('resale-value');
+  el.disabled=mode==='off';
+  document.getElementById('resale-value-label').textContent=mode==='unit'?'Preço de venda por arte (R$)':mode==='markup'?'Margem sobre o custo (%)':'Valor da revenda';
+  el.placeholder=mode==='unit'?'ex: 2,50':mode==='markup'?'ex: 100':'escolha o tipo ao lado';
+}
+function onPricingInput(){syncResaleField();savePricing();updatePricingHint();}
+// Lê as configurações; lança Error com mensagem quando um valor informado é inválido.
+function getPricing(){
+  var mode=document.getElementById('resale-mode').value;
+  var raw=document.getElementById('resale-value').value.trim();
+  var perRaw=document.getElementById('price-per-cm').value.trim();
+  var out={resale:{mode:'off',value:null},perCm:null};
+  if(mode!=='off'){
+    if(!raw) throw Error(mode==='unit'?'Informe o preço de venda por arte ou escolha "Não calcular".':'Informe a margem em % ou escolha "Não calcular".');
+    try{out.resale={mode:mode,value:Quote.cents(raw)};}
+    catch(e){throw Error(mode==='unit'?'Preço de venda por arte inválido. Use até duas casas decimais.':'Margem inválida. Use um número com até duas casas decimais.');}
+  }
+  if(perRaw){
+    try{out.perCm=Quote.cents(perRaw);}catch(e){throw Error('Preço por cm inválido. Use até duas casas decimais.');}
+  }
+  return out;
+}
+// Preço da folha sob medida: preço por cm informado ou estimativa interpolada da tabela padrão.
+function lengthSheetPrice(h,pricing){
+  if(pricing.perCm!=null) return{price:Quote.lengthPrice(pricing.perCm,h),estimated:false};
+  return{price:Quote.estimateLengthPrice(PRICE_TABLE,h),estimated:true};
+}
+function updatePricingHint(){
+  var el=document.getElementById('pricing-hint');if(!el) return;
+  var parts=[];
+  try{
+    var pr=getPricing();
+    var h=parseFloat(document.getElementById('fh-custom').value);
+    if(!(h>0)) h=60;
+    var sp=lengthSheetPrice(h,pr);
+    parts.push('Folha sob medida 29 x '+h+' cm: '+Quote.money(sp.price)+(sp.estimated?' (estimativa interpolada entre as folhas padrão; informe seu preço por cm para substituir)':' (preço por cm informado)')+'.');
+    if(pr.resale.mode==='unit') parts.push('Revenda: '+Quote.money(pr.resale.value)+' por arte.');
+    else if(pr.resale.mode==='markup') parts.push('Revenda: custo por arte + '+(pr.resale.value/100).toLocaleString('pt-BR')+'%.');
+  }catch(e){parts.push(e.message);}
+  el.textContent=parts.join(' ');
+}
+function resaleHead(pr){
+  return '<th>Custo/arte</th>'+(pr.resale.mode!=='off'?'<th>Venda/arte</th><th>Receita/folha</th><th>Lucro/folha</th>':'');
+}
+function resaleCells(price,qty,pr){
+  var extra=pr.resale.mode!=='off';
+  var r=Quote.resale(price,qty,pr.resale);
+  if(!r) return '<td>--</td>'+(extra?'<td>--</td><td>--</td><td>--</td>':'');
+  var h='<td class="num">'+Quote.money(r.cost)+'</td>';
+  if(extra) h+='<td class="num">'+Quote.money(r.sale)+'</td><td class="num">'+Quote.money(r.revenue)+'</td><td style="color:'+(r.profit<0?'var(--red)':'var(--green)')+';font-weight:600">'+Quote.signedMoney(r.profit)+'</td>';
+  return h;
+}
+function compNote(pr,hasEstimate,extra){
+  var t=[];
+  if(extra) t.push(extra);
+  t.push('Custo/arte = valor da folha dividido pelas artes que cabem.');
+  if(pr.resale.mode==='unit') t.push('Venda/arte = preço informado; receita e lucro consideram a folha cheia.');
+  if(pr.resale.mode==='markup') t.push('Venda/arte = custo/arte + '+(pr.resale.value/100).toLocaleString('pt-BR')+'%, arredondado ao centavo; receita e lucro consideram a folha cheia.');
+  if(hasEstimate) t.push('* Preço sob medida estimado pela tabela padrão.');
+  return t.join(' ');
+}
+
+// Link para a montadora com folha, espaçamento e artes (medidas e quantidades) já preenchidos.
+function montadoraHref(folha,esp,arts,placed){
+  var counts={};placed.forEach(function(p){counts[p.idx]=(counts[p.idx]||0)+1;});
+  var q=new URLSearchParams();
+  q.set('origem','calculadora');q.set('w',String(folha.w));q.set('h',String(folha.h));q.set('esp',String(esp));
+  arts.forEach(function(a,i){if(counts[i]) q.append('arte',a.origW+'x'+a.origH+'x'+counts[i]);});
+  return 'montadora/?'+q.toString();
+}
+
+// Preenche uma folha repetindo o pedido inteiro (todas as artes, na proporção das quantidades)
+// usando o mesmo motor packArts. Retorna quantos itens do pedido cabem, quantos pedidos completos
+// cabem e o encaixe resultante (pedidos completos + cópias extras sem desfazer os completos).
+function fillWithOrder(kit,fw,fh,esp,useRot){
+  function repeat(n){var list=[];for(var k=0;k<n;k++) for(var i=0;i<kit.length;i++) list.push(kit[i]);return list;}
+  function countIdx(pl){var c={};pl.forEach(function(p){c[p.idx]=(c[p.idx]||0)+1;});return c;}
+  var once=packArts(kit.slice(),fw,fh,esp,useRot);
+  if(once.length<kit.length) return{orderPlaced:once.length,kits:0,placed:once};
+  var kitArea=kit.reduce(function(s,it){return s+it.origW*it.origH;},0);
+  var lo=1,hi=Math.max(1,Math.floor((fw*fh+1e-9)/kitArea)),best=once;
+  while(lo<hi){
+    var mid=Math.ceil((lo+hi)/2),pl=packArts(repeat(mid),fw,fh,esp,useRot);
+    if(pl.length===mid*kit.length){lo=mid;best=pl;}else hi=mid-1;
+  }
+  var need={};kit.forEach(function(it){need[it.idx]=(need[it.idx]||0)+1;});
+  var more=packArts(repeat(lo+1),fw,fh,esp,useRot);
+  if(more.length>best.length){
+    var c=countIdx(more);
+    if(Object.keys(need).every(function(k){return (c[k]||0)>=need[k]*lo;})) best=more;
+  }
+  return{orderPlaced:kit.length,kits:lo,placed:best};
 }
 
 function money(v){
@@ -454,8 +595,8 @@ function buildResumo(){
   var meta=getOrderMeta();
   var lines=[
     'PEDIDO DTF UV',
-    'Cliente: '+(meta.client||'nao informado'),
-    'Anuncio da venda: '+(meta.ad||'nao informado'),
+    'Cliente: '+(meta.client||'não informado'),
+    'Anúncio da venda: '+(meta.ad||'não informado'),
     'Folha: '+r.folha.w+' x '+r.folha.h+' cm',
     '',
     'Total solicitado: '+r.requested+' artes',
@@ -467,10 +608,10 @@ function buildResumo(){
   ];
   var counts={};r.placed.forEach(function(p){counts[p.idx]=(counts[p.idx]||0)+1;});
   r.arts.forEach(function(a,i){
-    var color=a.color||'nao informado';
+    var color=a.color||'não informado';
     lines.push((i+1)+'. '+a.origW+' x '+a.origH+' cm | cor: '+color+' | qtd: '+(counts[i]||0));
   });
-  if(r.s2w>0&&r.s2h>0) lines.push('2a arte: '+r.s2w+' x '+r.s2h+' cm | cor: '+(r.s2Color||'nao informado'));
+  if(r.s2w>0&&r.s2h>0) lines.push('2ª arte: '+r.s2w+' x '+r.s2h+' cm | cor: '+(r.s2Color||'não informado'));
   lines.push('');
   lines.push('Conferir medidas, cores e quantidade antes da impressao.');
   return lines.join('\n');
@@ -494,7 +635,7 @@ function salvarPedido(){
     id:String(Date.now()),
     createdAt:new Date().toISOString(),
     client:meta.client||'Sem cliente',
-    ad:meta.ad||'Sem anuncio',
+    ad:meta.ad||'Sem anúncio',
     sheet:lastResult.folha.w+' x '+lastResult.folha.h+' cm',
     requested:lastResult.requested,
     placed:lastResult.placed.length,
@@ -532,7 +673,7 @@ function abrirPedidoSalvo(id){
   var o=findOrder(id);
   if(!o) return;
   document.getElementById('client-name').value=o.client==='Sem cliente'?'':o.client;
-  document.getElementById('sale-ad').value=o.ad==='Sem anuncio'?'':o.ad;
+  document.getElementById('sale-ad').value=(o.ad==='Sem anuncio'||o.ad==='Sem anúncio')?'':o.ad;
   document.getElementById('saved-detail').value=o.summary;
   showToast('Pedido aberto');
 }
@@ -548,7 +689,7 @@ function excluirPedidoSalvo(id){
   setSavedOrders(getSavedOrders().filter(function(o){return o.id!==id;}));
   renderSavedOrders();
   document.getElementById('saved-detail').value='';
-  showToast('Pedido excluido');
+  showToast('Pedido excluído');
 }
 
 function showToast(msg){
@@ -574,7 +715,7 @@ function fallbackCopy(text){
   ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
   document.body.appendChild(ta);ta.focus();ta.select();
   try{document.execCommand('copy');showToast('Resumo copiado');}
-  catch(e){showToast('Nao foi possivel copiar');}
+  catch(e){showToast('Não foi possível copiar');}
   document.body.removeChild(ta);
 }
 
@@ -704,16 +845,20 @@ function buildLegend(elId,placed,arts){
 
 function calcularNormal(){
   var folha=getFolha();
-  var esp=parseFloat(document.getElementById('esp').value)||0.3;
+  var esp=readEsp('esp');
+  if(esp==null){alert('Informe um espaçamento válido (0 ou mais).');return;}
+  var pricing;
+  try{pricing=getPricing();}catch(e){alert(e.message);return;}
+  if(folha.custom){var cp=lengthSheetPrice(folha.h,pricing);folha.price=cp.price;folha.estimated=cp.estimated;folha.cost=cp.price/100;}
   var useRot=document.getElementById('rotacao').checked;
   var arts=[],toPlace=[];
 
   if(currentMode==='fill'){
     var aw=parseFloat(document.getElementById('fill-w').value);
     var ah=parseFloat(document.getElementById('fill-h').value);
-    var color=(document.getElementById('fill-color').value||'nao informado').trim();
+    var color=(document.getElementById('fill-color').value||'não informado').trim();
     if(!aw||!ah){alert('Informe as medidas da arte.');return;}
-    if(!artFits(aw,ah,folha.w,folha.h,useRot)){alert('Esta arte nao cabe nesta folha com a rotacao '+(useRot?'ativada.':'desativada.'));return;}
+    if(!artFits(aw,ah,folha.w,folha.h,useRot)){alert('Esta arte não cabe nesta folha com a rotação '+(useRot?'ativada.':'desativada.'));return;}
     arts=[{origW:aw,origH:ah,idx:0,color:color}];
     var bf=bestFit(aw,ah,folha.w,folha.h,esp,useRot);
     for(var i=0;i<bf.total;i++) toPlace.push({origW:aw,origH:ah,idx:0});
@@ -725,12 +870,12 @@ function calcularNormal(){
       var w=parseFloat(document.getElementById('aw'+id).value);
       var h=parseFloat(document.getElementById('ah'+id).value);
       var qty=parseInt(document.getElementById('aq'+id).value)||1;
-      var color=(document.getElementById('ac'+id).value||'nao informado').trim();
+      var color=(document.getElementById('ac'+id).value||'não informado').trim();
       if(w>0&&h>0){arts.push({origW:w,origH:h,idx:i,color:color});for(var j=0;j<qty;j++) toPlace.push({origW:w,origH:h,idx:i});}
     });
     if(!arts.length){alert('Preencha as medidas das artes.');return;}
     var invalid=arts.filter(function(a){return !artFits(a.origW,a.origH,folha.w,folha.h,useRot);});
-    if(invalid.length){alert('Uma ou mais artes nao cabem nesta folha com a rotacao '+(useRot?'ativada.':'desativada.'));return;}
+    if(invalid.length){alert('Uma ou mais artes não cabem nesta folha com a rotação '+(useRot?'ativada.':'desativada.'));return;}
   }
 
   var placed=packArts(toPlace,folha.w,folha.h,esp,useRot);
@@ -748,14 +893,15 @@ function calcularNormal(){
     '<div class="stat"><div class="slabel">Artes encaixadas</div><div class="sval" style="color:var(--accent)">'+placed.length+'</div><div class="sunit">na folha</div></div>'+
     '<div class="stat"><div class="slabel">Aproveitamento</div><div class="sval">'+aprov+'%</div><div class="sunit">da folha</div></div>'+
     '<div class="stat"><div class="slabel">Faltaram</div><div class="sval" style="color:'+(missing?'var(--red)':'var(--green)')+'">'+missing+'</div><div class="sunit">de '+requested+'</div></div>'+
-    '<div class="stat"><div class="slabel">Rotacionadas</div><div class="sval">'+rotCount+'</div><div class="sunit">'+(useRot?'auto 90':'desativado')+'</div></div>';
+    '<div class="stat"><div class="slabel">Rotacionadas</div><div class="sval">'+rotCount+'</div><div class="sunit">'+(useRot?'auto 90°':'desativado')+'</div></div>';
   renderSummary('summary',{requested:requested,placed:placed.length,missing:missing,sheet:folha.w+'x'+folha.h});
 
   // SEGUNDA ARTE
   var s2w=parseFloat(document.getElementById('s2w').value);
   var s2h=parseFloat(document.getElementById('s2h').value);
-  var s2Color=(document.getElementById('s2-color').value||'nao informado').trim();
+  var s2Color=(document.getElementById('s2-color').value||'não informado').trim();
   var s2El=document.getElementById('s2-result');
+  var montadoraPlaced=placed,montadoraArts=arts;
   if(s2w>0&&s2h>0&&artFits(s2w,s2h,folha.w,folha.h,useRot)){
     var s2arts=arts.concat([{origW:s2w,origH:s2h,idx:arts.length,color:s2Color}]);
     var toPlace2=toPlace.slice();
@@ -763,31 +909,56 @@ function calcularNormal(){
     for(var k=0;k<maxS2;k++) toPlace2.push({origW:s2w,origH:s2h,idx:arts.length});
     var placed2=packArts(toPlace2,folha.w,folha.h,esp,useRot);
     var s2placed=placed2.filter(function(p){return p.idx===arts.length;});
+    montadoraPlaced=placed2;montadoraArts=s2arts;
     var newAprov=Math.round(placed2.reduce(function(s,p){return s+p.w*p.h;},0)/(folha.w*folha.h)*100);
     drawCanvas('canvas2',placed2,folha.w,folha.h,scale);
     buildLegend('legend2',placed2,s2arts);
     document.getElementById('s2-stats').innerHTML=
-      '<div class="stat"><div class="slabel">2a arte encaixadas</div><div class="sval" style="color:var(--green)">'+s2placed.length+'</div><div class="sunit">'+s2w+'x'+s2h+'cm</div></div>'+
-      '<div class="stat"><div class="slabel">Aprov. total</div><div class="sval" style="color:var(--accent)">'+newAprov+'%</div><div class="sunit">com 2a arte</div></div>'+
+      '<div class="stat"><div class="slabel">2ª arte encaixadas</div><div class="sval" style="color:var(--green)">'+s2placed.length+'</div><div class="sunit">'+s2w+'x'+s2h+'cm</div></div>'+
+      '<div class="stat"><div class="slabel">Aprov. total</div><div class="sval" style="color:var(--accent)">'+newAprov+'%</div><div class="sunit">com 2ª arte</div></div>'+
       '<div class="stat"><div class="slabel">Ganho</div><div class="sval" style="color:var(--orange)">+'+(newAprov-aprov)+'%</div><div class="sunit">aproveitamento</div></div>'+
       '<div class="stat"><div class="slabel">Total folha</div><div class="sval">'+placed2.length+'</div><div class="sunit">artes no total</div></div>';
     s2El.style.display='block';
   } else {s2El.style.display='none';}
 
   quoteRows=[];
-  // COMPARATIVO
-  var a0=arts[0];
-  var maxComp=Math.max.apply(null,FOLHAS_PAD.map(function(f){return bestFit(a0.origW,a0.origH,f.w,f.h,esp,useRot).total;}));
-  var html='<thead><tr><th>Folha</th><th>Custo</th><th>Artes</th><th>Col x Lin</th><th>Aproveit.</th><th>Rotacao</th></tr></thead><tbody>';
-  FOLHAS_PAD.forEach(function(f){
-    var bf=bestFit(a0.origW,a0.origH,f.w,f.h,esp,useRot);
-    quoteRows.push({id:String(f.h),label:f.label,price:Quote.cents(String(f.cost)),quantity:bf.total});
-    var ap=bf.total>0?Math.round((bf.total*bf.aw*bf.ah)/(f.w*f.h)*100):0;
-    var best=bf.total===maxComp&&maxComp>0;
-    html+='<tr><td style="color:var(--txt);font-weight:500">'+f.label+(best?'<span class="bbadge">MELHOR</span>':'')+'</td><td class="num">'+money(f.cost)+'</td><td class="'+(best?'bst':'num')+'">'+bf.total+'</td><td class="num">'+bf.cols+' x '+bf.rows+'</td><td style="color:'+(best?'var(--accent)':'var(--t2)')+';font-weight:'+(best?700:400)+'">'+ap+'%</td><td style="color:'+(bf.rotated?'var(--green)':'var(--t3)')+'">'+( bf.rotated?'sim':'nao')+'</td></tr>';
-  });
+  // COMPARATIVO: todas as artes do pedido (a 2ª arte proporcional fica de fora, como antes)
+  var compSheets=FOLHAS_PAD.map(function(f){return{id:String(f.h),label:f.label,w:f.w,h:f.h,price:Quote.cents(String(f.cost)),estimated:false};});
+  if(folha.custom) compSheets.push({id:'custom',label:folha.label+' (sob medida)'+(folha.estimated?'*':''),w:folha.w,h:folha.h,price:folha.price,estimated:folha.estimated});
+  var html,compData;
+  if(currentMode==='fill'){
+    compData=compSheets.map(function(f){var bf=bestFit(arts[0].origW,arts[0].origH,f.w,f.h,esp,useRot);return{f:f,qty:bf.total,bf:bf,ap:bf.total>0?Math.round((bf.total*bf.aw*bf.ah)/(f.w*f.h)*100):0};});
+    var maxComp=Math.max.apply(null,compData.map(function(d){return d.qty;}));
+    html='<thead><tr><th>Folha</th><th>Custo</th><th>Artes</th><th>Col x Lin</th><th>Aproveit.</th><th>Rotação</th>'+resaleHead(pricing)+'</tr></thead><tbody>';
+    compData.forEach(function(d){
+      var f=d.f,bf=d.bf,best=d.qty===maxComp&&maxComp>0;
+      quoteRows.push({id:f.id,label:f.label.replace('*',''),price:f.price,quantity:d.qty});
+      html+='<tr><td style="color:var(--txt);font-weight:500">'+esc(f.label)+(best?'<span class="bbadge">MELHOR</span>':'')+'</td><td class="num">'+Quote.money(f.price)+'</td><td class="'+(best?'bst':'num')+'">'+bf.total+'</td><td class="num">'+bf.cols+' x '+bf.rows+'</td><td style="color:'+(best?'var(--accent)':'var(--t2)')+';font-weight:'+(best?700:400)+'">'+d.ap+'%</td><td style="color:'+(bf.rotated?'var(--green)':'var(--t3)')+'">'+(bf.rotated?'sim':'não')+'</td>'+resaleCells(f.price,d.qty,pricing)+'</tr>';
+    });
+  } else {
+    var kit=toPlace.map(function(t){return{origW:t.origW,origH:t.origH,idx:t.idx};});
+    compData=compSheets.map(function(f){
+      var r=fillWithOrder(kit,f.w,f.h,esp,useRot);
+      var area=r.placed.reduce(function(s,p){return s+p.w*p.h;},0);
+      var c={};r.placed.forEach(function(p){c[p.idx]=(c[p.idx]||0)+1;});
+      return{f:f,qty:r.placed.length,kits:r.kits,orderPlaced:r.orderPlaced,counts:c,ap:Math.round(area/(f.w*f.h)*100)};
+    });
+    var maxComp2=Math.max.apply(null,compData.map(function(d){return d.qty;}));
+    html='<thead><tr><th>Folha</th><th>Custo</th><th>Pedido cabe?</th><th>Pedidos completos</th><th>Artes na folha</th><th>Aproveit.</th>'+resaleHead(pricing)+'</tr></thead><tbody>';
+    compData.forEach(function(d){
+      var f=d.f,best=d.qty===maxComp2&&maxComp2>0,ok=d.orderPlaced>=requested;
+      quoteRows.push({id:f.id,label:f.label.replace('*',''),price:f.price,quantity:d.qty});
+      var mix=arts.map(function(a){return (d.counts[a.idx]||0)+'x '+a.origW+'x'+a.origH;}).join(' + ');
+      html+='<tr><td style="color:var(--txt);font-weight:500">'+esc(f.label)+(best?'<span class="bbadge">MELHOR</span>':'')+'</td><td class="num">'+Quote.money(f.price)+'</td>'+
+        '<td style="color:'+(ok?'var(--green)':'var(--red)')+';font-weight:600">'+(ok?'Sim':'Não')+' ('+d.orderPlaced+'/'+requested+')</td>'+
+        '<td class="num">'+d.kits+'</td><td class="'+(best?'bst':'num')+'"><span class="qty-total">'+d.qty+'</span><div class="mix-cell">'+esc(mix)+'</div></td>'+
+        '<td style="color:'+(best?'var(--accent)':'var(--t2)')+';font-weight:'+(best?700:400)+'">'+d.ap+'%</td>'+resaleCells(f.price,d.qty,pricing)+'</tr>';
+    });
+  }
   html+='</tbody>';
   document.getElementById('comp-table').innerHTML=html;
+  document.getElementById('comp-note').textContent=compNote(pricing,!!(folha.custom&&folha.estimated),currentMode==='multi'?'Cada folha é preenchida repetindo o pedido inteiro ('+requested+' artes, na proporção informada); "Artes na folha" soma os pedidos completos e as cópias extras que ainda cabem. A 2ª arte proporcional não entra no comparativo.':'');
+  document.getElementById('montadora-link').href=montadoraHref(folha,esp,montadoraArts,montadoraPlaced);
 
   lastResult={mode:'normal',folha:folha,arts:arts,placed:placed,aprov:aprov,esp:esp,s2w:s2w,s2h:s2h,s2Color:s2Color,requested:requested,missing:missing,rotCount:rotCount};
   document.getElementById('result').style.display='block';
@@ -796,7 +967,10 @@ function calcularNormal(){
 }
 
 function calcularInverso(){
-  var esp=parseFloat(document.getElementById('esp-inv').value)||0.3;
+  var esp=readEsp('esp-inv');
+  if(esp==null){alert('Informe um espaçamento válido (0 ou mais).');return;}
+  var pricing;
+  try{pricing=getPricing();}catch(e){alert(e.message);return;}
   var useRot=document.getElementById('rotacao-inv').checked;
   var rows=document.querySelectorAll('#arts-list-inv .art-row');
   if(!rows.length){alert('Adicione ao menos uma arte.');return;}
@@ -806,14 +980,14 @@ function calcularInverso(){
     var w=parseFloat(document.getElementById('aw'+id).value);
     var h=parseFloat(document.getElementById('ah'+id).value);
     var qty=parseInt(document.getElementById('aq'+id).value)||1;
-    var color=(document.getElementById('ac'+id).value||'nao informado').trim();
+    var color=(document.getElementById('ac'+id).value||'não informado').trim();
     if(w>0&&h>0){arts.push({origW:w,origH:h,idx:i,color:color});for(var j=0;j<qty;j++) toPlace.push({origW:w,origH:h,idx:i});}
   });
   if(!arts.length){alert('Preencha as medidas das artes.');return;}
 
   var FW=29;
   var tooWide=arts.filter(function(a){return !artFits(a.origW,a.origH,FW,500,useRot);});
-  if(tooWide.length){alert('Uma ou mais artes nao cabem na largura fixa de 29cm com a rotacao '+(useRot?'ativada.':'desativada.'));return;}
+  if(tooWide.length){alert('Uma ou mais artes não cabem na largura fixa de 29 cm com a rotação '+(useRot?'ativada.':'desativada.'));return;}
   var minH=Math.max.apply(null,arts.map(function(a){
     if(useRot&&a.origH<=FW&&a.origW>a.origH) return a.origW;
     return a.origH;
@@ -825,7 +999,7 @@ function calcularInverso(){
     if(pl.length>=toPlace.length){idealH=Math.round(h*10)/10;break;}
   }
 
-  if(!idealH){alert('Nao foi possivel calcular. Verifique se as artes cabem em 29cm de largura.');return;}
+  if(!idealH){alert('Não foi possível calcular. Verifique se as artes cabem em 29 cm de largura.');return;}
 
   var placed=packArts(toPlace.slice(),FW,idealH,esp,useRot);
   var requested=toPlace.length;
@@ -838,12 +1012,12 @@ function calcularInverso(){
     var cnt=toPlace.filter(function(t){return t.idx===a.idx;}).length;
     return cnt+'x '+a.origW+'x'+a.origH+'cm '+esc(a.color||'');
   }).join(' + ');
-  document.getElementById('inv-sub').innerHTML=artsSummary+'<br>Aproveitamento: '+aprov+'% &nbsp;'+( rotCount>0?rotCount+' artes rotacionadas':'sem rotacao');
+  document.getElementById('inv-sub').innerHTML=artsSummary+'<br>Aproveitamento: '+aprov+'% &nbsp;'+(rotCount>0?rotCount+' artes rotacionadas':'sem rotação');
 
   document.getElementById('inv-stats').innerHTML=
     '<div class="stat"><div class="slabel">Total de artes</div><div class="sval" style="color:var(--accent)">'+placed.length+'</div><div class="sunit">encaixadas</div></div>'+
     '<div class="stat"><div class="slabel">Aproveitamento</div><div class="sval">'+aprov+'%</div><div class="sunit">da folha</div></div>'+
-    '<div class="stat"><div class="slabel">Rotacionadas</div><div class="sval">'+rotCount+'</div><div class="sunit">'+(useRot?'auto 90':'desativado')+'</div></div>'+
+    '<div class="stat"><div class="slabel">Rotacionadas</div><div class="sval">'+rotCount+'</div><div class="sunit">'+(useRot?'auto 90°':'desativado')+'</div></div>'+
     '<div class="stat"><div class="slabel">Comprimento</div><div class="sval" style="font-size:18px">'+idealH+'</div><div class="sunit">cm</div></div>';
   renderSummary('summary-inv',{requested:requested,placed:placed.length,missing:missing,sheet:'29x'+idealH});
 
@@ -854,18 +1028,25 @@ function calcularInverso(){
   document.getElementById('fbadge-inv').textContent='29 x '+idealH+' cm';
 
   quoteRows=[];
-  var html2='<thead><tr><th>Folha padrao</th><th>Custo</th><th>Status</th><th>Artes</th><th>Sobra</th></tr></thead><tbody>';
+  var idealPrice=lengthSheetPrice(idealH,pricing);
+  var html2='<thead><tr><th>Folha</th><th>Custo</th><th>Status</th><th>Artes</th><th>Sobra</th>'+resaleHead(pricing)+'</tr></thead><tbody>';
   FOLHAS_PAD.forEach(function(f){
     var pl2=packArts(toPlace.slice(),f.w,f.h,esp,useRot);
-    quoteRows.push({id:String(f.h),label:f.label,price:Quote.cents(String(f.cost)),quantity:pl2.length});
+    var price=Quote.cents(String(f.cost));
+    quoteRows.push({id:String(f.h),label:f.label,price:price,quantity:pl2.length});
     var ok=pl2.length>=toPlace.length;
-    html2+='<tr><td style="color:var(--txt);font-weight:500">'+f.label+'</td><td class="num">'+money(f.cost)+'</td>';
-    html2+='<td style="color:'+(ok?'var(--green)':'var(--red)')+';font-weight:600">'+(ok?'Comporta tudo':'Nao comporta')+'</td>';
+    html2+='<tr><td style="color:var(--txt);font-weight:500">'+f.label+'</td><td class="num">'+Quote.money(price)+'</td>';
+    html2+='<td style="color:'+(ok?'var(--green)':'var(--red)')+';font-weight:600">'+(ok?'Comporta tudo':'Não comporta')+'</td>';
     html2+='<td class="num">'+pl2.length+' / '+toPlace.length+'</td>';
-    html2+='<td style="color:'+(ok?'var(--green)':'var(--t3)')+'">'+( ok?f.h+'cm (sobra '+(f.h-idealH).toFixed(1)+'cm)':'--')+'</td></tr>';
+    html2+='<td style="color:'+(ok?'var(--green)':'var(--t3)')+'">'+(ok?f.h+' cm (sobra '+(f.h-idealH).toFixed(1)+' cm)':'--')+'</td>'+resaleCells(price,pl2.length,pricing)+'</tr>';
   });
+  var idealLabel='29 x '+idealH+' cm';
+  quoteRows.push({id:'custom',label:idealLabel+' (sob medida)',price:idealPrice.price,quantity:placed.length});
+  html2+='<tr><td style="color:var(--txt);font-weight:500">'+idealLabel+' (sob medida)'+(idealPrice.estimated?'*':'')+'</td><td class="num">'+Quote.money(idealPrice.price)+'</td><td style="color:var(--green);font-weight:600">Comporta tudo</td><td class="num">'+placed.length+' / '+toPlace.length+'</td><td style="color:var(--t3)">sem sobra</td>'+resaleCells(idealPrice.price,placed.length,pricing)+'</tr>';
   html2+='</tbody>';
   document.getElementById('comp-table-inv').innerHTML=html2;
+  document.getElementById('comp-note-inv').textContent=compNote(pricing,idealPrice.estimated,'');
+  document.getElementById('montadora-link-inv').href=montadoraHref({w:FW,h:idealH},esp,arts,placed);
 
   lastResult={mode:'inv',folha:{w:FW,h:idealH,label:'29 x '+idealH+' cm'},arts:arts,placed:placed,aprov:aprov,esp:esp,s2w:0,s2h:0,s2Color:'',requested:requested,missing:missing,rotCount:rotCount};
 
@@ -964,9 +1145,9 @@ function abrirQR(){
   if(s2w>0&&s2h>0) txt+='|S2:'+s2w+'x'+s2h;
   if(!drawLocalQR(txt,'qr-canvas')) return;
   var lEl=document.getElementById('qr-lines');
-  lEl.innerHTML='<div>Folha: <span>'+folha.w+' x '+folha.h+' cm</span></div><div>Espacamento: <span>'+esp+' cm</span></div>'+
+  lEl.innerHTML='<div>Folha: <span>'+folha.w+' x '+folha.h+' cm</span></div><div>Espaçamento: <span>'+esp+' cm</span></div>'+
     arts.map(function(a,i){return '<div>'+a.origW+'x'+a.origH+'cm '+esc(a.color||'')+': <span>'+(counts[i]||0)+' artes</span></div>';}).join('')+
-    (s2w>0&&s2h>0?'<div>2a arte: <span>'+s2w+'x'+s2h+'cm</span></div>':'')+
+    (s2w>0&&s2h>0?'<div>2ª arte: <span>'+s2w+'x'+s2h+'cm</span></div>':'')+
     '<div style="border-top:1px solid var(--b1);margin-top:6px;padding-top:6px">Total: <span>'+placed.length+' artes</span> | Aprov: <span>'+aprov+'%</span></div>';
   document.getElementById('qr-overlay').classList.add('show');
 }
@@ -976,6 +1157,8 @@ function fecharQROverlay(e){if(e.target===document.getElementById('qr-overlay'))
 addArt(10,8,4,'colorido');
 addArtInv(10,8,3,'colorido');
 renderSavedOrders();
+loadPricing();
+document.getElementById('fh-custom').addEventListener('input',updatePricingHint);
 </script>
 <script src="quote-ui.js"></script>
 </body>

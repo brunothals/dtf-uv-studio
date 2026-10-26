@@ -1,7 +1,7 @@
 const dialog=document.createElement('dialog');
 dialog.id='quote-dialog';dialog.setAttribute('aria-labelledby','quote-title');
 dialog.innerHTML=`<h2 id="quote-title">Gerar orçamento</h2><button id="quote-close" class="bclean">Fechar</button>
-<p>1. Configuração do orçamento</p><p>As quantidades correspondem ao comparativo da calculadora. No modo normal, o comparativo considera somente a arte principal, sem a segunda arte.</p><form id="quote-form"><div class="quote-grid">
+<p>1. Configuração do orçamento</p><p>As quantidades correspondem ao comparativo da calculadora. No modo normal, o comparativo considera todas as artes do pedido, na proporção das quantidades, sem a segunda arte proporcional. A folha sob medida usa o preço por cm configurado ou a estimativa pela tabela padrão.</p><form id="quote-form"><div class="quote-grid">
 <label>Modo<select name="mode"><option value="full">Comparativo completo</option><option value="short">Orçamento resumido</option><option value="formal">Formalização</option></select></label>
 <label>Nome do cliente (opcional)<input name="name" autocomplete="off"></label>
 <label>Folha<select name="sheet"></select></label>
