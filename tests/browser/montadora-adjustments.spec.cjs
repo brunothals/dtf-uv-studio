@@ -76,7 +76,7 @@ test('exclusão individual, múltipla e última limpa montagem e conserva config
 });
 
 test('fundos só visuais: PNGs reais e arte individual preservam transparência e branco',async({page})=>{
- await page.goto('/montadora/');const buffer=await pngFixture(page);await page.locator('input[type=file]').first().setInputFiles({name:'branca.png',mimeType:'image/png',buffer});await page.getByLabel('Lado maior branca.png').fill('0.2');
+ await page.goto('/montadora/');const buffer=await pngFixture(page);await page.locator('input[type=file]').first().setInputFiles({name:'branca.png',mimeType:'image/png',buffer});await page.getByLabel('Largura branca.png').fill('0.2');
  await expect(page.locator('.sheet-preview img')).toBeVisible();await expect(page.locator('.sheet-preview')).toHaveCSS('background-color','rgb(32, 38, 52)');await expect(page.getByLabel('Recortar folha ao conteúdo')).toBeChecked();
  const button=page.getByRole('button',{name:'PNG',exact:true});await expect(button).toBeEnabled();const original=await download(page,button);const pixels=await decode(page,original);const preview=await page.locator('.sheet-preview img').evaluate(img=>({w:img.naturalWidth,h:img.naturalHeight}));expect(Math.abs(preview.w/preview.h-65/32)).toBeLessThan(.2);expect(pixels.white).toBeGreaterThan(1900);expect(pixels.clear).toBeGreaterThan(0);expect(pixels.soft).toBeGreaterThan(0);expect(pixels.width).toBe(65);expect(pixels.height).toBe(32);
  for(const background of ['light','checker','custom','dark']){
@@ -84,7 +84,7 @@ test('fundos só visuais: PNGs reais e arte individual preservam transparência 
  }
  const art=await download(page,page.getByTitle('Baixar PNG cortado'));const individual=await decode(page,art);expect(individual).toEqual(pixels);
  // Two sheets are downloaded as separate PNGs, never an archive.
- await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('fast');await page.getByLabel('Lado maior branca.png').fill('29');await page.getByLabel('Quantidade branca.png').fill('3');
+ await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('fast');await page.getByLabel('Largura branca.png').fill('29');await page.getByLabel('Quantidade branca.png').fill('3');
  const downloads=[];const listener=d=>downloads.push(d);page.on('download',listener);
  const allButton=page.getByRole('button',{name:'Baixar PNGs',exact:true});await expect(allButton).toBeEnabled();await allButton.click();
  await expect.poll(()=>downloads.length).toBe(2);await expect(allButton).toBeEnabled();page.off('download',listener);
@@ -109,7 +109,7 @@ test('arredondamento de pixels não sobrepõe peças adjacentes com espaço zero
 
 test('exportação real com rotação, recorte e margem preserva DPI e não usa montagem antiga',async({page})=>{
  await page.goto('/montadora/');const buffer=await pngFixture(page);await page.locator('input[type=file]').first().setInputFiles({name:'medidas.png',mimeType:'image/png',buffer});
- await page.getByLabel('Lado maior medidas.png').fill('0.2');await page.getByLabel('Sensib. corte (alpha)',{exact:true}).fill('8');await page.getByLabel('Sensib. corte (alpha)',{exact:true}).fill('0');await expect(page.getByLabel('Sensib. corte (alpha)',{exact:true})).toHaveValue('0');
+ await page.getByLabel('Largura medidas.png').fill('0.2');await page.getByText('Opções de PDF e recorte',{exact:true}).click();await page.getByLabel('Sensib. corte (alpha)',{exact:true}).fill('8');await page.getByLabel('Sensib. corte (alpha)',{exact:true}).fill('0');await expect(page.getByLabel('Sensib. corte (alpha)',{exact:true})).toHaveValue('0');
  await page.getByRole('combobox',{name:'Comprimento da folha',exact:true}).selectOption('auto');await page.getByLabel('Margem (cm)',{exact:true}).fill('0.1');await page.getByRole('button',{name:'90°',exact:true}).click();
  const button=page.getByRole('button',{name:'PNG',exact:true});await expect(button).toBeEnabled();
  const png=await download(page,button);const pixels=await decode(page,png);

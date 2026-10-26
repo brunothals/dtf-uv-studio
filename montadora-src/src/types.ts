@@ -91,6 +91,11 @@ export interface ArtItem {
    * (largura/altura trocadas). Nunca misturar orientações da mesma arte.
    */
   rotate90: boolean
+  /** Medidas de impressão nos eixos da fonte, antes da rotação. */
+  widthCmOverride?: number | null
+  heightCmOverride?: number | null
+  lockAspect?: boolean
+  groupName?: string
   error?: string
 }
 
@@ -149,7 +154,7 @@ export const DEFAULT_CONFIG: SheetConfig = {
   gapXMm: 3,
   gapYMm: 3,
   allowRotation: false,
-  packMode: 'maxrects',
+  packMode: 'grade',
   dpi: 300,
   useNativeDpi: true,
   maxSideCm: 5,

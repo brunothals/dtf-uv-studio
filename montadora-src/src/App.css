@@ -1205,3 +1205,82 @@ textarea {
 .preview-controls input[type=color] { width: 70px; min-height: 36px; padding: 2px; }
 .png-parts { margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; }
 .png-parts .btn { display: block; width: 100%; margin-top: 8px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* Editor de produção: campos acessíveis e toda a largura disponível. */
+.folha-app { width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 12px 16px 24px; }
+.folha-toolbar { position: static; font-size: .875rem; gap: 10px; }
+.folha-tb-select { max-width: 100%; font-size: .875rem; }
+.folha-tb-field { max-width: 100%; }
+.folha-tb-field input { max-width: 100%; }
+.folha-layout { grid-template-columns: minmax(350px, 440px) minmax(0, 1fr); grid-template-areas: 'arts preview'; gap: 16px; }
+.folha-arts { grid-area: arts; min-width: 0; }
+.folha-preview-pane { grid-area: preview; min-width: 0; }
+.folha-preview-sticky, .folha-arts-card { top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; overflow-x: hidden; }
+.folha-arts-head { flex-direction: column; align-items: stretch; }
+.folha-arts-head .art-toolbar { flex-wrap: wrap; }
+.sheet-quick-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 12px 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.sheet-quick-settings input, .art-editor input, .batch-tools input { min-width: 0; width: 100%; box-sizing: border-box; }
+.advanced-settings { border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; }
+.advanced-settings summary, .batch-tools summary { cursor: pointer; font-weight: 600; }
+.advanced-settings > .card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; border: 0; padding: 12px 0; box-shadow: none; }
+.advanced-settings > .card .hint { grid-column: 1 / -1; margin: 0; }
+.advanced-settings > .field { max-width: 250px; }
+.layout-summary { margin: 12px 0; padding: 10px; background: var(--surface-2); border-radius: 8px; font-size: .875rem; line-height: 1.5; }
+.art-list { display: grid; gap: 12px; margin-top: 12px; }
+.art-editor { padding: 12px; border: 1px solid var(--border); border-radius: 10px; min-width: 0; scroll-margin: 12px; }
+.art-editor.is-focused { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.art-editor-head { display: grid; grid-template-columns: 18px 44px minmax(0, 1fr) 36px; align-items: center; gap: 8px; margin-bottom: 12px; }
+.art-editor-head strong { font-size: .875rem; overflow-wrap: anywhere; line-height: 1.4; }
+.art-editor .thumb { width: 44px; height: 44px; }
+.art-editor input[type=checkbox] { width: 18px; height: 18px; }
+.art-delete { min-width: 36px; min-height: 36px; padding: 4px; font-size: 1.35rem; }
+.art-editor-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.art-editor .field { font-size: .8125rem; margin-bottom: 8px; min-width: 0; }
+.art-editor .field input { font-size: .9375rem; height: 38px; padding: 6px 8px; }
+.aspect-control { display: flex; gap: 8px; align-items: center; font-size: .8125rem; margin: 8px 0 12px; }
+.art-editor .row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.art-editor .row-actions .btn { min-height: 36px; }
+.art-editor .art-cm { font-size: .8125rem; margin: 8px 0; }
+.batch-tools { padding: 10px 0; }
+.batch-tools[open] { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.batch-tools summary, .batch-tools .hint { grid-column: 1 / -1; }
+.sheet-card-large .sheet-preview { overflow: auto; max-height: 65vh; padding: 12px; display: block; }
+.preview-stage { position: relative; flex-shrink: 0; margin: 0 auto; cursor: crosshair; }
+.sheet-card-large .sheet-preview .preview-stage img { width: 100%; height: auto; max-width: none; max-height: none; display: block; border-radius: 0; }
+.preview-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.preview-overlay rect { fill: none; vector-effect: non-scaling-stroke; }
+.cut-guide { stroke: #06d6a0; stroke-width: 2; stroke-dasharray: 6 4; }
+.cut-warning { stroke: #ff9f1c; stroke-width: 3; stroke-dasharray: 6 4; }
+.selected-outline { stroke: var(--accent); stroke-width: 3; }
+.cut-alert { color: #ffbe69; font-size: .875rem; }
+.sheets-preview-large { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 950px) {
+  .folha-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'arts' 'preview'; }
+  .folha-preview-sticky, .folha-arts-card { position: static; max-height: none; }
+  .folha-arts-card { overflow: visible; }
+  .art-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+}
+@media (max-width: 480px) {
+  .folha-app { padding: 10px; }
+  .sheet-quick-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .advanced-settings > .card { grid-template-columns: minmax(0, 1fr); }
+  .art-editor { padding: 10px; }
+  .art-editor-head { grid-template-columns: 18px 36px minmax(0, 1fr) 36px; }
+  .art-editor .thumb { width: 36px; height: 36px; }
+  .art-editor-fields { gap: 6px; }
+  .art-editor .field input { padding: 4px; }
+  .art-editor .field { font-size: .75rem; }
+  .batch-tools[open] { grid-template-columns: minmax(0, 1fr); }
+}
+.row-cut-guides line { stroke: #6bc8ff; stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.sheet-cut-warning { padding: 0 12px; }
+.editor-navigation { display: none; }
+#studio-arts, #studio-preview { scroll-margin-top: 64px; }
+.art-group { font-size: .8125rem; margin: 10px 0; overflow-wrap: anywhere; }
+.art-group summary { cursor: pointer; }
+.art-group .field { margin-top: 8px; }
+.status-banner.is-warning { color: #ffd59a; border-color: #a86618; background: #4d310f; }
+@media (max-width: 950px) {
+  .editor-navigation { display: flex; gap: 10px; position: sticky; top: 0; z-index: 10; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; }
+  .editor-navigation .btn { flex: 1; }
+}

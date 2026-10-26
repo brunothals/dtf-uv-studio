@@ -7,7 +7,7 @@ import type {
   SheetConfig,
 } from '../types'
 import { MAX_AUTO_HEIGHT_CM } from '../types'
-import { cmToPx, computePrintSizeCm, mmToPx, pxToCm, roundPx, roundDistancePx } from './units'
+import { cmToPx, getArtSourceSizeCm, mmToPx, pxToCm, roundPx, roundDistancePx } from './units'
 
 /** Lado máximo do preview na UI (px) — exportação usa resolução nativa. */
 const PREVIEW_MAX_SIDE = 1400
@@ -26,11 +26,7 @@ export interface ArtPrintSize {
 
 export function getArtPrintSize(art: ArtItem, config: SheetConfig): ArtPrintSize {
   const maxSide = art.maxSideCmOverride ?? config.maxSideCm
-  let { widthCm, heightCm } = computePrintSizeCm(
-    art.trimmedWidthPx,
-    art.trimmedHeightPx,
-    maxSide,
-  )
+  let { widthCm, heightCm } = getArtSourceSizeCm(art, maxSide)
 
   // Per-art 90°: swap printed dimensions for ALL copies of this art
   const rotated = !!art.rotate90
@@ -233,6 +229,9 @@ function packGrade(
       })
     }
   }
+
+  // Fileiras previsíveis: peças altas primeiro, menores completam a largura restante.
+  pieces.sort((a, b) => b.height - a.height || b.width - a.width)
 
   if (pieces.length === 0) return []
 
@@ -815,7 +814,13 @@ export function renderSheetStrip(
 /** Packing em unidades físicas de 0,001 mm, independente do DPI de visualização/exportação. */
 const LAYOUT_DPI = 25400
 export function packArts(arts: ArtItem[], config: SheetConfig, options?: PackArtsOptions) {
-  const packed = packArtsAtDpi(arts, { ...config, dpi: LAYOUT_DPI }, { skipPreview: true })
+  const groups = new Map<string, ArtItem[]>()
+  for (const art of arts) {
+    const key = art.groupName?.trim() || art.id
+    groups.set(key, [...(groups.get(key) ?? []), art])
+  }
+  const ordered = config.packMode === 'group_rows' || config.packMode === 'group_cols' ? [...groups.values()].flat() : arts
+  const packed = packArtsAtDpi(ordered, { ...config, dpi: LAYOUT_DPI }, { skipPreview: true })
   const sheets = packed.sheets.map((sheet) => {
     const result = scalePackedSheet(sheet, LAYOUT_DPI, config.dpi)
     if (!options?.skipPreview && sheet.index < (options?.maxPreviewSheets ?? Infinity)) {

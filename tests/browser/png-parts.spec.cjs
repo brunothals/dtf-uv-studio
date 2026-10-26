@@ -52,7 +52,7 @@ test('downloads reais dividem largura e altura, com nomes PNG, DPI e bordas sem 
 test('interface cancela entre PNGs, permite baixar parte isolada e limpa planos antigos',async({page})=>{
  await page.goto('/montadora/');
  const buffer=Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=2;c.height=2;c.getContext('2d').fillRect(0,0,2,2);return c.toDataURL().split(',')[1];}),'base64');
- await page.locator('input[type=file]').first().setInputFiles({name:'arte.png',mimeType:'image/png',buffer});await page.getByLabel('Lado maior arte.png').fill('29');await page.getByLabel('Quantidade arte.png').fill('3');
+ await page.locator('input[type=file]').first().setInputFiles({name:'arte.png',mimeType:'image/png',buffer});await page.getByLabel('Largura arte.png').fill('29');await page.getByLabel('Quantidade arte.png').fill('3');
  const all=page.getByRole('button',{name:'Baixar PNGs',exact:true});await expect(page.locator('.sheet-meta')).toHaveCount(3);await expect(all).toBeEnabled();
  const downloads=[];page.on('download',d=>downloads.push(d));const first=page.waitForEvent('download');await all.click();await first;await page.getByRole('button',{name:'Parar após esta parte'}).click();await expect(all).toBeEnabled();expect(downloads).toHaveLength(1);
  const panel=page.getByRole('region',{name:'Partes PNG'});await expect(panel).toBeVisible();expect(downloads[0].suggestedFilename()).toBe('folha-01.png');

@@ -183,6 +183,7 @@ export interface PngPart {
   y: number
   widthPx: number
   heightPx: number
+  cutsArtwork?: boolean
 }
 
 /** Planeja recortes sem criar canvases nem um buffer do tamanho total da folha. */
@@ -199,11 +200,32 @@ export function planPngParts(
   const side = Math.floor(Math.sqrt(limits.maxPixels))
   const tileW = Math.min(width, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / Math.min(height, side))))
   const tileH = Math.min(height, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / tileW)))
-  const parts: PngPart[] = []
-  for (let y = 0, row = 1; y < height; y += tileH, row++) {
-    for (let x = 0, column = 1; x < width; x += tileW, column++) {
-      parts.push({ index: parts.length, row, column, x, y, widthPx: Math.min(tileW, width - x), heightPx: Math.min(tileH, height - y) })
+  // Projeções dos retângulos: um corte no intervalo aberto atravessaria uma arte.
+  const cutBefore = (start: number, limit: number, intervals: [number, number][]) => {
+    const merged: [number, number][] = []
+    for (const interval of intervals.sort((a, b) => a[0] - b[0])) {
+      const last = merged.at(-1)
+      if (last && interval[0] < last[1]) last[1] = Math.max(last[1], interval[1])
+      else merged.push([...interval])
     }
+    const crossing = merged.find(([a, b]) => a < limit && limit < b)
+    const candidate = crossing ? Math.floor(crossing[0]) : limit
+    return candidate > start ? candidate : limit
+  }
+  const geometry = resolveExportGeometry(sheet, dpi, options)
+  const parts: PngPart[] = []
+  for (let y = 0, row = 1; y < height; row++) {
+    const bottom = cutBefore(y, Math.min(height, y + tileH), geometry.placements.map(p => [p.y, p.y + p.height]))
+    const band = geometry.placements.filter(p => p.y < bottom && p.y + p.height > y)
+    const widthLimit = Math.min(limits.maxSide, Math.floor(limits.maxPixels / (bottom - y)))
+    for (let x = 0, column = 1; x < width; column++) {
+      const right = cutBefore(x, Math.min(width, x + widthLimit), band.map(p => [p.x, p.x + p.width]))
+      const cutsArtwork = band.some(p => p.x < right && p.x + p.width > x &&
+        (p.x < x || p.x + p.width > right || p.y < y || p.y + p.height > bottom))
+      parts.push({ index: parts.length, row, column, x, y, widthPx: right - x, heightPx: bottom - y, cutsArtwork })
+      x = right
+    }
+    y = bottom
   }
   return parts
 }

@@ -52,7 +52,7 @@ test('PDF real: transparência e remoção opcional do branco externo preservand
 test('montadora integrada: importar, espaçar, exportar, navegar e conferir celular',async({page})=>{
  await page.goto('/');await page.getByRole('link',{name:'Montadora de artes'}).click();await expect(page.getByRole('heading',{name:'Montagem de folhas'})).toBeVisible();await expect(page.getByLabel('Recortar folha ao conteúdo')).toBeChecked();
  const png=await page.evaluate(()=>{const c=document.createElement('canvas');c.width=64;c.height=32;c.getContext('2d').fillRect(0,0,64,32);return c.toDataURL().split(',')[1];});await page.locator('input[type=file]').first().setInputFiles({name:'detalhes.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
- await page.getByRole('combobox',{name:'Comprimento da folha',exact:true}).selectOption('custom');await page.getByRole('spinbutton',{name:'Compr. (cm)',exact:true}).fill('1');await page.getByLabel('Lado maior detalhes.png').fill('0.2');await page.getByRole('spinbutton',{name:'Espaço H (cm)',exact:true}).fill('0.4');await expect(page.locator('.art-cm')).toHaveText('0.200×0.100');await expect(page.locator('.sheet-meta')).toContainText('Exportação:');
+ await page.getByRole('combobox',{name:'Comprimento da folha',exact:true}).selectOption('custom');await page.getByRole('spinbutton',{name:'Compr. (cm)',exact:true}).fill('1');await page.getByLabel('Largura detalhes.png').fill('0.2');await page.getByRole('spinbutton',{name:'Espaço H (cm)',exact:true}).fill('0.4');await expect(page.locator('.art-cm')).toHaveText('0.200×0.100');await expect(page.locator('.sheet-meta')).toContainText('Exportação:');
  await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('high');await expect(page.getByRole('status').filter({hasText:'A qualidade selecionada'})).toContainText('reduz os pixels');await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('native');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'PNG',exact:true}).click();expect((await download).suggestedFilename()).toMatch(/\.png$/);
  if(page.viewportSize().width<600)await page.screenshot({path:'/tmp/dtf-studio-montadora.png',fullPage:true});
@@ -79,7 +79,7 @@ test('PNG único grande orienta exportação em partes mantendo resolução',asy
 
 test('PDF no aplicativo compilado carrega o worker e gera prévia sem fundo externo',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/montadora/');await page.getByRole('checkbox',{name:'Remover fundo branco externo do PDF'}).check();
+ await page.goto('/montadora/');await page.getByText('Opções de PDF e recorte',{exact:true}).click();await page.getByRole('checkbox',{name:'Remover fundo branco externo do PDF'}).check();
  await page.locator('input[type=file]').first().setInputFiles({name:'fundo-branco.pdf',mimeType:'application/pdf',buffer:Buffer.from(fixturePdf(true))});
  await expect(page.locator('.art-cm')).toHaveText('5.000×5.000');await expect(page.locator('.status-banner')).toContainText('branco externo removido');await expect(page.locator('.sheet-preview img')).toBeVisible();expect(errors).toEqual([]);
 });

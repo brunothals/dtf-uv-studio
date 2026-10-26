@@ -25,10 +25,12 @@ import {
   planPngParts,
   downloadPngPart,
   type PngDownload,
+  type PngPart,
   resolveExportGeometry,
 } from './utils/exportPng'
 import { isPdfFile, loadPdfAsCanvases } from './utils/pdfImport'
 import { cmToPx, computeNativeExportDpi, resolveExportDpi, roundPx } from './utils/units'
+import { resizeArt } from './utils/artEditing'
 import './App.css'
 
 /** DPI máximo para packing/preview ao vivo (export reempacota no DPI escolhido). */
@@ -177,8 +179,56 @@ function LazySheetPreview({
   return <p className="empty">Gerando preview…</p>
 }
 
+function MeasurementInput({ value, label, onValue }: { value: number; label: string; onValue: (value: string) => void }) {
+  const [draft, setDraft] = useState('')
+  const [editing, setEditing] = useState(false)
+  return <input type="number" min={0.001} step={0.1} aria-label={label}
+    value={editing ? draft : Number(value.toFixed(4))}
+    onFocus={() => { setDraft(String(Number(value.toFixed(4)))); setEditing(true) }}
+    onChange={event => { setDraft(event.target.value); onValue(event.target.value) }}
+    onBlur={() => setEditing(false)} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur() }} />
+}
+
+function PreviewSurface({ sheet, parts, zoom, showCuts, organized, focusedArt, onSelect }: {
+  sheet: PackedSheet; parts: PngPart[]; zoom: number; showCuts: boolean; organized: boolean; focusedArt: string | null
+  onSelect: (sheet: PackedSheet, x: number, y: number, element: HTMLElement, multiple?: boolean) => void
+}) {
+  const rowMap = new Map<number, typeof sheet.placements>()
+  for (const p of sheet.placements) {
+    const row = rowMap.get(p.y)
+    if (row) row.push(p)
+    else rowMap.set(p.y, [p])
+  }
+  const rows = [...rowMap.entries()].sort(([a], [b]) => a - b).map(([y, pieces]) => ({ y, pieces: pieces.sort((a, b) => a.x - b.x) }))
+  return <div className="preview-stage" style={{ width: `${zoom * 100}%`, aspectRatio: `${sheet.widthPx} / ${sheet.heightPx}` }}
+    role="button" tabIndex={0} aria-label={`Selecionar arte na prévia da folha ${sheet.index + 1}`}
+    onClick={event => onSelect(sheet, event.clientX, event.clientY, event.currentTarget, event.ctrlKey || event.metaKey)}
+    onKeyDown={event => { if (event.key !== 'Enter' && event.key !== ' ') return; event.preventDefault(); const p = sheet.placements[0]; if (!p) return; const box = event.currentTarget.getBoundingClientRect(); onSelect(sheet, box.left + (p.x + p.width / 2) * box.width / sheet.widthPx, box.top + (p.y + p.height / 2) * box.height / sheet.heightPx, event.currentTarget) }}>
+    <LazySheetPreview sheet={sheet} alt={`Folha ${sheet.index + 1} — pré-visualização`} />
+    <svg className="preview-overlay" viewBox={`0 0 ${sheet.widthPx} ${sheet.heightPx}`} aria-hidden="true">
+      {showCuts && organized && <g data-testid="row-cut-guides" className="row-cut-guides">{rows.map((row, i) => {
+        const bottom = Math.max(...row.pieces.map(p => p.y + p.height))
+        return <g key={row.y}>
+          {i < rows.length - 1 && <line x1={0} x2={sheet.widthPx} y1={(bottom + rows[i + 1].y) / 2} y2={(bottom + rows[i + 1].y) / 2} />}
+          {row.pieces.slice(0, -1).map((p, n) => <line key={n} x1={(p.x + p.width + row.pieces[n + 1].x) / 2} x2={(p.x + p.width + row.pieces[n + 1].x) / 2} y1={row.y} y2={bottom} />)}
+        </g>
+      })}</g>}
+      {showCuts && parts.length > 1 && <g data-testid="part-guides">{parts.map(part => <rect key={part.index}
+        x={part.x} y={part.y} width={part.widthPx} height={part.heightPx} className={part.cutsArtwork ? 'cut-warning' : 'cut-guide'} />)}</g>}
+      {sheet.placements.filter(p => p.artId === focusedArt).map((p, i) => <rect key={i} data-testid="preview-selection" x={p.x} y={p.y} width={p.width} height={p.height} className="selected-outline" />)}
+    </svg>
+  </div>
+}
+
 export default function App() {
 
+  const [zoom, setZoom] = useState(1)
+  const [showCuts, setShowCuts] = useState(true)
+  const [focusedArt, setFocusedArt] = useState<string | null>(null)
+  const [undoRemoval, setUndoRemoval] = useState<{ art: ArtItem; index: number; selected: boolean }[]>([])
+  const [batchQuantity, setBatchQuantity] = useState(1)
+  const [batchWidth, setBatchWidth] = useState(5)
+  const [batchGroup, setBatchGroup] = useState('')
   const [pngDownloads, setPngDownloads] = useState<PngDownload[]>([])
   const cancelExportRef = useRef(false)
   const [previewBackground, setPreviewBackground] = useState('dark')
@@ -186,6 +236,7 @@ export default function App() {
   const [layoutInput, setLayoutInput] = useState<{ arts: ArtItem[]; config: SheetConfig } | null>(null)
   const [config, setConfig] = useState<SheetConfig>({ ...DEFAULT_CONFIG })
   /** Comprimento: '21'|'42'|'50'|'100'|'auto' (completar)|'custom' */
+  const [widthChoice, setWidthChoice] = useState('29')
   const [lengthChoice, setLengthChoice] = useState<string>('42')
   const [arts, setArts] = useState<ArtItem[]>([])
   const [sheets, setSheets] = useState<PackedSheet[]>([])
@@ -203,6 +254,12 @@ export default function App() {
   const skipDuplicateNames = false
   /** Erro fatal de packing/preview (canvas OOM etc.) */
   const [packFatalError, setPackFatalError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!undoRemoval.length) return
+    const timer = window.setTimeout(() => setUndoRemoval([]), 60000)
+    return () => window.clearTimeout(timer)
+  }, [undoRemoval])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -268,8 +325,7 @@ export default function App() {
 
     setArts((prev) => {
       if (prev.length === 0) return prev
-      return prev.map((art) =>
-        buildArtItem(
+      return prev.map((art) => { const next = { ...art, ...buildArtItem(
           art.id,
           art.name,
           art.originalCanvas,
@@ -280,8 +336,8 @@ export default function App() {
           art.quantity,
           art.maxSideCmOverride,
           art.rotate90,
-        ),
-      )
+        ) }; return art.lockAspect !== false && art.widthCmOverride != null ? resizeArt(next, 'width', getArtPrintSize(art, config).widthCm, config.maxSideCm) : next
+      })
     })
   }, [config.trimEnabled, config.alphaThreshold])
 
@@ -341,6 +397,7 @@ export default function App() {
             failures.push(`${file.name}: PDF sem páginas`)
           }
           for (const pg of pages) {
+            try {
             const id = uid()
             const art = buildArtItem(
               id,
@@ -362,6 +419,7 @@ export default function App() {
             pdfPages++
             next.push(art)
             artDupKeyByIdRef.current.set(id, `${key}::p${pg.name}`)
+            } catch (e) { failures.push(`${pg.name}: ${e instanceof Error ? e.message : 'falha nesta página'}`) }
           }
           if (pages.length > 0) seen.add(key)
         } catch (e) {
@@ -437,26 +495,51 @@ export default function App() {
     if (folderInputRef.current) folderInputRef.current.value = ''
   }
 
-  const removeArt = (id: string) => {
-    artDupKeyByIdRef.current.delete(id)
-    setArts((prev) => prev.filter((a) => a.id !== id))
+  const removeArts = (ids: Set<string>) => {
+    const removed = arts.flatMap((art, index) => ids.has(art.id) ? [{ art, index, selected: !!selectedIds[art.id] }] : [])
+    setUndoRemoval(removed)
+    ids.forEach(id => artDupKeyByIdRef.current.delete(id))
+    setArts(prev => prev.filter(art => !ids.has(art.id)))
+    setStatus(`${removed.length} arte(s) excluída(s). Você pode desfazer.`)
   }
-
-  const removeSelectedArts = () => {
-    const ids = new Set(arts.filter((art) => selectedIds[art.id]).map((art) => art.id))
-    ids.forEach((id) => artDupKeyByIdRef.current.delete(id))
-    setArts((prev) => prev.filter((art) => !ids.has(art.id)))
-    setStatus(`${ids.size} arte(s) excluída(s).`)
+  const removeArt = (id: string) => removeArts(new Set([id]))
+  const removeSelectedArts = () => removeArts(new Set(arts.filter(a => selectedIds[a.id]).map(a => a.id)))
+  const clearArts = () => removeArts(new Set(arts.map(a => a.id)))
+  const restoreArts = () => {
+    setArts(prev => {
+      const next = [...prev]
+      for (const item of undoRemoval) if (!next.some(a => a.id === item.art.id)) next.splice(Math.min(item.index, next.length), 0, item.art)
+      return next
+    })
+    setSelectedIds(prev => ({ ...prev, ...Object.fromEntries(undoRemoval.map(item => [item.art.id, item.selected])) }))
+    setUndoRemoval([])
+    setStatus('Artes restauradas.')
   }
-
-  const clearArts = () => {
-    setArts([])
-    setSelectedIds({})
-    setSheets([])
-    setPackErrors([])
-    setPackFatalError(null)
-    setStatus('')
-    artDupKeyByIdRef.current.clear()
+  const duplicateArt = (art: ArtItem) => {
+    const nextId = uid()
+    let n = 2
+    const stem = art.name.replace(/ — variação \d+$/, '')
+    while (arts.some(a => a.name === `${stem} — variação ${n}`)) n++
+    setArts(prev => [...prev, { ...art, id: nextId, name: `${stem} — variação ${n}` }])
+    setFocusedArt(nextId)
+  }
+  const setArtMeasurement = (id: string, axis: 'width' | 'height', value: string) => {
+    setArts(prev => prev.map(art => art.id === id ? resizeArt(art, axis, Number(value), config.maxSideCm) : art))
+  }
+  const applyToSelected = (operation: 'quantity' | 'width' | 'group') => {
+    setArts(prev => prev.map(art => !selectedIds[art.id] ? art : operation === 'quantity'
+      ? { ...art, quantity: Math.max(0, Math.floor(batchQuantity) || 0) }
+      : operation === 'group' ? { ...art, groupName: batchGroup.trim() } : resizeArt(art, 'width', batchWidth, config.maxSideCm)))
+  }
+  const selectFromPreview = (sheet: PackedSheet, clientX: number, clientY: number, element: HTMLElement, multiple = false) => {
+    const box = element.getBoundingClientRect()
+    const x = (clientX - box.left) * sheet.widthPx / box.width
+    const y = (clientY - box.top) * sheet.heightPx / box.height
+    const placement = sheet.placements.find(p => x >= p.x && x <= p.x + p.width && y >= p.y && y <= p.y + p.height)
+    if (!placement) return
+    setFocusedArt(placement.artId)
+    setSelectedIds(prev => multiple ? { ...prev, [placement.artId]: !prev[placement.artId] } : { [placement.artId]: true })
+    document.getElementById(`art-${placement.artId}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }
 
   const toggleSelect = (id: string) => {
@@ -539,22 +622,6 @@ export default function App() {
       prev.map((a) =>
         a.id === id ? { ...a, quantity: Math.max(0, Math.floor(qty) || 0) } : a,
       ),
-    )
-  }
-
-  const setArtMaxSide = (id: string, value: string) => {
-    setArts((prev) =>
-      prev.map((a) => {
-        if (a.id !== id) return a
-        if (value === '' || value == null) {
-          return { ...a, maxSideCmOverride: null }
-        }
-        const n = parseFloat(value)
-        return {
-          ...a,
-          maxSideCmOverride: Number.isFinite(n) && n > 0 ? n : null,
-        }
-      }),
     )
   }
 
@@ -693,11 +760,17 @@ export default function App() {
   )
 
   // A prévia acompanha o recorte da folha sem modificar o layout usado para exportar.
-  const previewSheets = useMemo(() => sheets.map((sheet) => {
-    if (!config.cropEmptyExport) return sheet
-    const geometry = resolveExportGeometry(sheet, previewDpi, exportOpts)
-    return { ...sheet, ...geometry, previewUrl: '' }
-  }), [sheets, config.cropEmptyExport, previewDpi, exportOpts])
+  const previewSheets = useMemo(() => sheets.map(sheet => {
+    const full = scalePackedSheet(sheet, previewDpi, effectiveDpi)
+    const geometry = resolveExportGeometry(full, effectiveDpi, exportOpts)
+    return { ...full, ...geometry, previewUrl: '', utilizationPct: Math.min(100, geometry.placements.reduce((area, p) => area + p.width * p.height, 0) * 100 / (geometry.widthPx * geometry.heightPx)) }
+  }), [sheets, previewDpi, effectiveDpi, exportOpts])
+  const exportPlans = useMemo(() => sheets.map(sheet => planPngParts(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts)), [sheets, previewDpi, effectiveDpi, exportOpts])
+  const counts = useMemo(() => ({
+    requested: arts.reduce((n, art) => n + art.quantity, 0),
+    placed: sheets.reduce((n, sheet) => n + sheet.placements.length, 0),
+  }), [arts, sheets])
+
 
   /** Recupera o mesmo layout físico em resolução de exportação; falhas não usam um preview antigo. */
   const packForExport = (): PackedSheet[] => {
@@ -759,8 +832,8 @@ export default function App() {
       sheetGrowMode: mode,
       // Recortar a folha continua sendo uma escolha explícita.
       cropEmptyExport: c.cropEmptyExport,
-      // Grade combina bem com rolo sob medida
-      packMode: mode === 'auto_height' && c.packMode === 'maxrects' ? 'grade' : c.packMode,
+      // Alterar a folha não troca a estratégia de montagem escolhida.
+      packMode: c.packMode,
     }))
   }
 
@@ -772,7 +845,7 @@ export default function App() {
     loading || exporting
       ? 'status-banner is-busy'
       : status
-        ? 'status-banner is-ok'
+        ? status.includes('falharam') ? 'status-banner is-warning' : 'status-banner is-ok'
         : ''
 
   return (
@@ -784,11 +857,6 @@ export default function App() {
         </div>
       </header>
 
-      <section className="card" aria-label="Importação de PDF">
-        <label className="field"><span>Resolução ao importar PDF</span><select value={pdfImportDpi} onChange={(e) => setPdfImportDpi(Number(e.target.value))}><option value={300}>300 DPI</option><option value={600}>600 DPI (recomendado para detalhes pequenos)</option><option value={1200}>1200 DPI</option></select></label>
-        <label><input type="checkbox" checked={removePdfWhite} onChange={(e) => setRemovePdfWhite(e.target.checked)} /> Remover fundo branco externo do PDF</label>
-        <p className="hint">Ative apenas se o branco externo for fundo. Desative para manter partes brancas da arte. A opção vale para os próximos PDFs importados.</p>
-      </section>
       {effectiveDpi < nativeDpi && <p role="status" className="hint">A qualidade selecionada reduz os pixels das artes. Use Máxima para preservar os detalhes originais, especialmente em artes pequenas.</p>}
       {/* Barra superior — ações frequentes */}
       <div className="folha-toolbar">
@@ -854,22 +922,24 @@ export default function App() {
           title="Modo de montagem"
           aria-label="Modo de montagem"
         >
-          <option value="maxrects">Aproveitar espaço</option>
-          <option value="grade">Grade</option>
-          <option value="group_rows">Agrupar fileiras</option>
+          <option value="maxrects">Máximo aproveitamento</option>
+          <option value="grade">Corte organizado</option>
+          <option value="group_rows">Agrupar por arte / pedido</option>
           <option value="group_cols">Agrupar colunas</option>
         </select>
 
         <select
           className="folha-tb-select"
-          value={config.widthCm === 41 ? '41' : '29'}
-          onChange={(e) => updateConfig('widthCm', Number(e.target.value))}
+          value={widthChoice}
+          onChange={e => { setWidthChoice(e.target.value); if (e.target.value !== 'custom') updateConfig('widthCm', Number(e.target.value)) }}
           title="Largura da folha"
           aria-label="Largura da folha"
         >
           <option value="29">29 cm</option>
           <option value="41">41 cm</option>
+          <option value="custom">Largura personalizada</option>
         </select>
+        {widthChoice === 'custom' && <label className="folha-tb-field"><span>Largura personalizada (cm)</span><input type="number" min={1} step={0.1} value={config.widthCm} onChange={e => updateConfig('widthCm', Math.max(1, Number(e.target.value) || 1))} /></label>}
         <select
           className="folha-tb-select"
           value={lengthChoice}
@@ -882,6 +952,7 @@ export default function App() {
           ))}
         </select>
 
+        {lengthChoice === 'custom' && <label className="folha-tb-field"><span>Compr. (cm)</span><input type="number" min={1} step={0.1} value={config.heightCm} onChange={e => updateConfig('heightCm', Math.max(1, Number(e.target.value) || 1))} /></label>}
         <label className="folha-tb-field folha-tb-export-quality">
           <span>Qualidade export</span>
           <select
@@ -924,7 +995,7 @@ export default function App() {
               disabled={exporting || loading || layoutPending}
               onClick={handleExportAll}
             >
-              {sheets.length === 1 && planPngParts(scalePackedSheet(sheets[0], previewDpi, effectiveDpi), effectiveDpi, exportOpts).length === 1 ? 'Baixar PNG' : 'Baixar PNGs'}
+              {sheets.length === 1 && (exportPlans[0]?.length ?? 0) === 1 ? 'Baixar PNG' : 'Baixar PNGs'}
             </button>
           )}
         </div>
@@ -953,148 +1024,32 @@ export default function App() {
         />
       </div>
 
+      <section className="sheet-quick-settings" aria-label="Espaçamentos e medidas da folha">
+        <label className="field"><span>Margem (cm)</span><input type="number" min={0} step={0.1} value={mmToCmField(config.marginMm)} onChange={e => updateConfig('marginMm', cmFieldToMm(e.target.value))} /></label>
+        <label className="field"><span>Espaço H (cm)</span><input type="number" min={0} step={0.1} value={mmToCmField(config.gapXMm)} onChange={e => updateConfig('gapXMm', cmFieldToMm(e.target.value))} /></label>
+        <label className="field"><span>Espaço V (cm)</span><input type="number" min={0} step={0.1} value={mmToCmField(config.gapYMm)} onChange={e => updateConfig('gapYMm', cmFieldToMm(e.target.value))} /></label>
+        <label className="field"><span>Lado padrão (cm)</span><input type="number" min={0.1} step={0.1} value={config.maxSideCm} onChange={e => updateConfig('maxSideCm', Math.max(.1, Number(e.target.value) || 5))} /></label>
+        {exportQuality !== 'native' && <label className="field"><span>DPI do export</span><input type="number" min={72} step={1} value={config.dpi} onChange={e => updateConfig('dpi', Math.max(72, Number(e.target.value) || 300))} /></label>}
+      </section>
+      <details className="advanced-settings"><summary>Opções de PDF e recorte</summary>
+      <section className="card" aria-label="Importação de PDF">
+        <label className="field"><span>Resolução ao importar PDF</span><select value={pdfImportDpi} onChange={(e) => setPdfImportDpi(Number(e.target.value))}><option value={300}>300 DPI</option><option value={600}>600 DPI (recomendado para detalhes pequenos)</option><option value={1200}>1200 DPI</option></select></label>
+        <label><input type="checkbox" checked={removePdfWhite} onChange={(e) => setRemovePdfWhite(e.target.checked)} /> Remover fundo branco externo do PDF</label>
+        <p className="hint">Ative apenas se o branco externo for fundo. Desative para manter partes brancas da arte. A opção vale para os próximos PDFs importados.</p>
+      </section>
+        <label className="field"><span>Sensib. corte (alpha)</span><input type="number" min={0} max={255} step={1} value={config.alphaThreshold} disabled={!config.trimEnabled} onChange={e => updateConfig('alphaThreshold', Math.min(255, Math.max(0, Number(e.target.value) || 0)))} /></label>
+        <p className="hint">Zero preserva todos os pixels visíveis. O recorte da arte é independente do recorte da folha. As fontes são preservadas no modo Máxima.</p>
+      </details>
+      <p className="layout-summary" aria-live="polite">{layoutPending && arts.length ? 'Atualizando montagem…' : `${counts.placed} de ${counts.requested} peça(s) montadas · ${sheets.length} folha(s)`}
+        {config.packMode === 'grade' ? ' · Corte organizado: fileiras alinhadas, da esquerda para a direita.' : config.packMode === 'maxrects' ? ' · Máximo aproveitamento pode exigir mais cortes.' : ' · Cópias da mesma arte e pedidos iguais ficam juntos.'}
+        {isAutoHeight ? ` · Folha sob medida, até ${MAX_AUTO_HEIGHT_CM} cm.` : ''}</p>
+      <nav className="editor-navigation" aria-label="Atalhos da montadora">
+        <button type="button" className="btn sm" onClick={() => document.getElementById('studio-arts')?.scrollIntoView({ block: 'start', behavior: 'smooth' })}>Editar artes</button>
+        <button type="button" className="btn sm" onClick={() => document.getElementById('studio-preview')?.scrollIntoView({ block: 'start', behavior: 'smooth' })}>Ver prévia</button>
+      </nav>
       <main className="folha-layout">
-        {/* ESQUERDA — opções da folha */}
-        <aside className="folha-options">
-          <section className="card folha-card">
-            <div className="folha-card-head">
-              <p className="section-kicker">Opções</p>
-              <h2>Folha</h2>
-            </div>
-
-            <div className="grid-2">
-              <label className="field">
-                <span>Largura</span>
-                <select
-                  value={config.widthCm === 41 ? '41' : '29'}
-                  onChange={(e) => updateConfig('widthCm', Number(e.target.value))}
-                >
-                  <option value="29">29 cm</option>
-                  <option value="41">41 cm</option>
-                </select>
-              </label>
-              <label className="field">
-                <span>Comprimento</span>
-                <select value={lengthChoice} onChange={(e) => onLengthChange(e.target.value)}>
-                  {LENGTH_OPTIONS.map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {lengthChoice === 'custom' && (
-              <label className="field">
-                <span>Compr. (cm)</span>
-                <input
-                  type="number"
-                  min={1}
-                  step={0.1}
-                  value={config.heightCm}
-                  onChange={(e) => updateConfig('heightCm', Number(e.target.value) || 1)}
-                />
-              </label>
-            )}
-            {isAutoHeight && (
-              <div className="dpi-readout">Completar: cresce até {MAX_AUTO_HEIGHT_CM} cm</div>
-            )}
-
-            <label className="field">
-              <span>Margem (cm)</span>
-              <input type="number" min={0} step={0.1} value={mmToCmField(config.marginMm)}
-                onChange={(e) => updateConfig('marginMm', cmFieldToMm(e.target.value))} />
-            </label>
-            <div className="grid-2">
-              <label className="field">
-                <span>Espaço H (cm)</span>
-                <input type="number" min={0} step={0.1} value={mmToCmField(config.gapXMm)}
-                  onChange={(e) => updateConfig('gapXMm', cmFieldToMm(e.target.value))} />
-              </label>
-              <label className="field">
-                <span>Espaço V (cm)</span>
-                <input type="number" min={0} step={0.1} value={mmToCmField(config.gapYMm)}
-                  onChange={(e) => updateConfig('gapYMm', cmFieldToMm(e.target.value))} />
-              </label>
-            </div>
-            <label className="field">
-              <span>Lado (cm)</span>
-              <input type="number" min={0.1} step={0.1} value={config.maxSideCm}
-                onChange={(e) => updateConfig('maxSideCm', Number(e.target.value) || 5)} />
-            </label>
-
-            <label className="field">
-              <span>Qualidade do export</span>
-              <select
-                value={exportQuality}
-                onChange={(e) =>
-                  setExportQuality(e.target.value as ExportQualityPreset)
-                }
-              >
-                <option value="native">Máxima (nativo ~{nativeDpi})</option>
-                <option value="high">Alta (300 DPI)</option>
-                <option value="fast">Rápida (150 DPI)</option>
-                <option value="custom">Personalizado</option>
-              </select>
-            </label>
-
-            {exportQuality !== 'native' && (
-              <label className="field">
-                <span>DPI do export</span>
-                <input
-                  type="number"
-                  min={72}
-                  max={2400}
-                  step={1}
-                  value={config.dpi}
-                  onChange={(e) => {
-                    const dpi = Number(e.target.value) || 300
-                    setConfig((c) => ({ ...c, useNativeDpi: false, dpi }))
-                  }}
-                />
-              </label>
-            )}
-
-            <p className="hint folha-export-dpi-hint">
-              PDF: cada página vira uma arte (resolução de importação selecionada, fundo transparente). Ative a opção de remover branco externo antes de importar se o PDF tiver fundo branco próprio.
-            </p>
-            <p className="hint folha-export-dpi-hint">
-              DPI mais baixo = arquivo menor e export mais rápido; resolução cai.
-              Preview continua em até {PREVIEW_DPI_CAP} DPI.
-            </p>
-
-            <label className="field">
-              <span>Sensib. corte (alpha)</span>
-              <input
-                type="number"
-                min={0}
-                max={255}
-                step={1}
-                value={config.alphaThreshold}
-                disabled={!config.trimEnabled}
-                onChange={(e) =>
-                  updateConfig(
-                    'alphaThreshold',
-                    Math.min(255, Math.max(0, Number(e.target.value) || 0)),
-                  )
-                }
-              />
-            </label>
-
-
-            <details className="folha-hints">
-              <summary>Dicas de montagem</summary>
-              <p className="hint">
-                <strong>Grade</strong> enche a largura esquerda→direita. Agrupar mantém a
-                mesma arte junta. Em sob medida a altura cresce até {MAX_AUTO_HEIGHT_CM} cm.
-                Preview usa até {PREVIEW_DPI_CAP} DPI; o export mantém o mesmo layout físico no DPI
-                escolhido (padrão nativo ~{nativeDpi}).
-              </p>
-            </details>
-          </section>
-        </aside>
-
         {/* CENTRO — preview */}
-        <section className="folha-preview-pane">
+        <section className="folha-preview-pane" id="studio-preview">
           <div className="folha-preview-sticky">
             <div className="result-head">
               <div>
@@ -1110,6 +1065,10 @@ export default function App() {
             </div>
 
             <div className="preview-controls">
+              <label className="field"><span>Zoom da prévia</span><select value={zoom} onChange={e => setZoom(Number(e.target.value))}>
+                <option value={1}>Ajustar à área</option><option value={1.5}>150%</option><option value={2}>200%</option><option value={3}>300%</option>
+              </select></label>
+              <label><input type="checkbox" checked={showCuts} onChange={e => setShowCuts(e.target.checked)} /> Mostrar guias de corte e PNGs</label>
               <label className="field">
                 <span>Fundo da prévia</span>
                 <select value={previewBackground} onChange={(e) => setPreviewBackground(e.target.value)}>
@@ -1125,10 +1084,11 @@ export default function App() {
               </label>}
               <p className="hint">Somente visualização. Os PNGs e as artes individuais continuam transparentes.</p>
             </div>
-            <p className="hint">Folhas grandes são divididas em PNGs separados, mantendo o DPI, sem ZIP. As partes seguem linhas e colunas, sem sobreposição; a divisão pode atravessar uma arte.</p>
+            <p className="hint">Os PNGs priorizam cortes nos espaços entre artes, mantendo DPI e transparência. As guias são só da prévia: azul para corte em fileiras, verde para partes PNG e laranja quando uma arte precisa ser dividida.</p>
             {exporting && <button className="btn sm" type="button" onClick={() => { cancelExportRef.current = true }}>Parar após esta parte</button>}
             {pngDownloads.length > 1 && <section className="png-parts" aria-label="Partes PNG">
               <h3>{pngDownloads.length} PNGs separados</h3>
+              {pngDownloads.some(item => item.part.cutsArtwork) && <p className="cut-alert" role="alert">Uma arte ultrapassa os limites de uma parte ou não há corredor livre para o corte. Confira as divisões antes de imprimir: essa arte será dividida entre PNGs.</p>}
               <p className="hint">Permita vários downloads no navegador ou baixe cada parte abaixo. Imprima a 100%, sem ajustar à página. Os nomes indicam linha (L), coluna (C) e posição em pixels na folha exportada.</p>
               {pngDownloads.map((item) => <button type="button" className="btn sm" key={item.filename}
                 disabled={exporting || loading || layoutPending} onClick={() => void handleDownloadPart(item)}>
@@ -1205,7 +1165,8 @@ export default function App() {
                         {sheet.placements.length} peça(s)
                         {' · '}Exportação: {(() => { const g = resolveExportGeometry(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts); return `${(g.widthPx * 2.54 / effectiveDpi).toFixed(3)} × ${(g.heightPx * 2.54 / effectiveDpi).toFixed(3)} cm` })()}
                         {config.cropEmptyExport ? ' · recortado' : ''}
-                        {' · '}{planPngParts(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts).length} PNG(s)
+                        {' · '}{previewSheets[sheet.index]?.utilizationPct?.toFixed(1)}% de ocupação aproximada
+                        {' · '}{(exportPlans[sheet.index]?.length ?? 0)} PNG(s)
                       </span>
                       <button
                         type="button"
@@ -1216,16 +1177,12 @@ export default function App() {
                         PNG
                       </button>
                     </div>
+                    {exportPlans[sheet.index]?.some(part => part.cutsArtwork) && <p className="cut-alert sheet-cut-warning" role="alert">Esta divisão atravessa uma arte. As guias laranja indicam as partes que precisam ser conferidas antes de imprimir.</p>}
                     <div className={`sheet-preview preview-${previewBackground}${previewBackground === 'checker' ? ' checker' : ''}`}
                       style={{ backgroundColor: previewBackground === 'custom' ? previewColor : previewBackground === 'light' ? '#f5f5f5' : previewBackground === 'dark' ? '#202634' : undefined }}>
-                      <LazySheetPreview
-                        sheet={previewSheets[sheet.index] ?? sheet}
-                        alt={
-                          isAutoHeight
-                            ? 'Pré-visualização da tira'
-                            : `Folha ${sheet.index + 1}`
-                        }
-                      />
+                      <PreviewSurface sheet={previewSheets[sheet.index] ?? sheet}
+                        parts={exportPlans[sheet.index] ?? []}
+                        zoom={zoom} showCuts={showCuts} organized={config.packMode === 'grade' || config.packMode === 'group_rows'} focusedArt={focusedArt} onSelect={selectFromPreview} />
                     </div>
                   </div>
                 ))}
@@ -1234,8 +1191,8 @@ export default function App() {
           </div>
         </section>
 
-        {/* DIREITA — lista de artes compacta */}
-        <aside className="folha-arts">
+        {/* Editor de artes: primeira coluna no computador e primeiro painel no celular. */}
+        <aside className="folha-arts" id="studio-arts">
           <section className="card folha-card folha-arts-card">
             <div className="folha-card-head folha-arts-head">
               <div>
@@ -1272,6 +1229,16 @@ export default function App() {
               )}
             </div>
 
+            {undoRemoval.length > 0 && <button type="button" className="btn sm" title="Desfazer a última exclusão, disponível por 60 segundos" onClick={restoreArts}>Desfazer exclusão ({undoRemoval.length})</button>}
+            {arts.length > 0 && <details className="batch-tools"><summary>Editar selecionadas ({arts.filter(art => selectedIds[art.id]).length})</summary>
+              <p className="hint">As ações abaixo alteram somente as artes marcadas.</p>
+              <label className="field"><span>Quantidade em lote</span><input type="number" min={0} step={1} value={batchQuantity} onChange={e => setBatchQuantity(Number(e.target.value))} /></label>
+              <button type="button" className="btn sm" onClick={() => applyToSelected('quantity')}>Aplicar quantidade</button>
+              <label className="field"><span>Largura em lote (cm)</span><input type="number" min={0.01} step={0.1} value={batchWidth} onChange={e => setBatchWidth(Number(e.target.value))} /></label>
+              <button type="button" className="btn sm" onClick={() => applyToSelected('width')}>Aplicar largura</button>
+              <label className="field"><span>Pedido em lote</span><input value={batchGroup} maxLength={80} onChange={e => setBatchGroup(e.target.value)} /></label>
+              <button type="button" className="btn sm" onClick={() => applyToSelected('group')}>Aplicar pedido</button>
+            </details>}
             {arts.length === 0 ? (
               <div className="empty-state">
                 <p className="empty-state-title">Nenhuma arte</p>
@@ -1280,111 +1247,34 @@ export default function App() {
                 </p>
               </div>
             ) : (
-              <div className="art-table-wrap">
-                <table className="art-table art-table-compact">
-                  <thead>
-                    <tr>
-                      <th title="Seleção">
-                        <span className="sr-only">Sel.</span>
-                      </th>
-                      <th></th>
-                      <th>Qtd</th>
-                      <th>Lado</th>
-                      <th>cm</th>
-                      <th>90°</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {artRows.map(({ art, ps }) => (
-                      <tr key={art.id} className={ps.error ? 'row-error' : undefined}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={!!selectedIds[art.id]}
-                            onChange={() => toggleSelect(art.id)}
-                            aria-label={`Selecionar ${art.name}`}
-                          />
-                        </td>
-                        <td>
-                          <div
-                            className={`thumb checker${art.rotate90 ? ' thumb-rotated' : ''}`}
-                            title={art.name}
-                          >
-                            <img src={art.thumbnailUrl} alt={art.name} />
-                          </div>
-                        </td>
-                        <td>
-                          <input
-                            className="qty"
-                            type="number"
-                            min={0}
-                            step={1}
-                            value={art.quantity}
-                            onChange={(e) => setQty(art.id, Number(e.target.value))}
-                            aria-label={`Quantidade ${art.name}`}
-                          />
-                          {ps.error && <small className="err">{ps.error}</small>}
-                        </td>
-                        <td>
-                          <input
-                            className="override"
-                            type="number"
-                            min={0.1}
-                            step={0.1}
-                            placeholder={String(config.maxSideCm)}
-                            value={art.maxSideCmOverride ?? ''}
-                            onChange={(e) => setArtMaxSide(art.id, e.target.value)}
-                            title="Lado maior cm (vazio = global)"
-                            aria-label={`Lado maior ${art.name}`}
-                          />
-                        </td>
-                        <td className="mono art-cm" title={art.name}>
-                          {ps.widthCm.toFixed(3)}×{ps.heightCm.toFixed(3)}
-                          {art.rotate90 ? ' ↻' : ''}
-                        </td>
-                        <td className="rot-cell">
-                          <button
-                            type="button"
-                            className={`btn sm${art.rotate90 ? ' primary' : ''}`}
-                            aria-pressed={art.rotate90}
-                            onClick={() => toggleRotate90(art.id)}
-                            title="Girar 90°"
-                          >
-                            90°
-                          </button>
-                        </td>
-                        <td className="row-actions">
-                          <button
-                            type="button"
-                            className="btn sm"
-                            disabled={!!ps.error}
-                            onClick={() => handleEncherFolha(art.id)}
-                            title="Encher folha com esta arte"
-                          >
-                            Encher
-                          </button>
-                          <button
-                            type="button"
-                            className="btn sm"
-                            onClick={() => downloadArtPng(art)}
-                            title="Baixar PNG cortado"
-                          >
-                            ↓
-                          </button>
-                          <button
-                            type="button"
-                            className="btn sm danger"
-                            onClick={() => removeArt(art.id)}
-                            title={`Excluir arte ${art.name}`} aria-label={`Excluir arte ${art.name}`}
-                          >
-                            Excluir arte
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="art-list">
+                {artRows.map(({ art, ps }) => <article key={art.id} id={`art-${art.id}`} className={`art-editor ${focusedArt === art.id ? 'is-focused' : ''} ${ps.error ? 'row-error' : ''}`}>
+                  <header className="art-editor-head">
+                    <input type="checkbox" checked={!!selectedIds[art.id]} onChange={() => toggleSelect(art.id)} aria-label={`Selecionar ${art.name}`} />
+                    <div className={`thumb checker${art.rotate90 ? ' thumb-rotated' : ''}`}><img src={art.thumbnailUrl} alt={art.name} /></div>
+                    <strong>{art.name}</strong>
+                    <button type="button" className="btn sm danger art-delete" onClick={() => removeArt(art.id)} aria-label={`Excluir arte ${art.name}`} title={`Excluir arte ${art.name}`}>×</button>
+                  </header>
+                  <div className="art-editor-fields">
+                    <label className="field"><span>Largura (cm)</span><MeasurementInput value={ps.widthCm} label={`Largura ${art.name}`} onValue={value => setArtMeasurement(art.id, 'width', value)} /></label>
+                    <label className="field"><span>Altura (cm)</span><MeasurementInput value={ps.heightCm} label={`Altura ${art.name}`} onValue={value => setArtMeasurement(art.id, 'height', value)} /></label>
+                    <label className="field"><span>Quantidade</span><input type="number" min={0} step={1} value={art.quantity} onChange={e => setQty(art.id, Number(e.target.value))} aria-label={`Quantidade ${art.name}`} /></label>
+                  </div>
+                  <label className="aspect-control"><input type="checkbox" checked={art.lockAspect !== false} aria-label={`Manter proporção ${art.name}`}
+                    onChange={e => { const locked = e.target.checked; setArts(prev => prev.map(a => a.id !== art.id ? a : locked ? resizeArt({ ...a, lockAspect: true }, 'width', ps.widthCm, config.maxSideCm) : { ...a, lockAspect: false })) }} /> Manter proporção</label>
+                  {art.lockAspect === false && <p className="hint cut-alert">Proporção livre: medidas independentes podem deformar a arte.</p>}
+                  <details className="art-group"><summary>Pedido / grupo{art.groupName ? `: ${art.groupName}` : ' (opcional)'}</summary>
+                    <label className="field"><span>Identificação do pedido</span><input value={art.groupName ?? ''} maxLength={80} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, groupName: e.target.value } : a))} aria-label={`Pedido ${art.name}`} /></label>
+                  </details>
+                  <p className="mono art-cm">{ps.widthCm.toFixed(3)}×{ps.heightCm.toFixed(3)}{art.rotate90 ? ' ↻' : ''}</p>
+                  {ps.error && <p className="err">{ps.error}</p>}
+                  <div className="row-actions">
+                    <button type="button" className={`btn sm${art.rotate90 ? ' primary' : ''}`} aria-pressed={art.rotate90} onClick={() => toggleRotate90(art.id)} title="Girar 90°">90°</button>
+                    <button type="button" className="btn sm" onClick={() => duplicateArt(art)} aria-label={`Duplicar ${art.name}`}>Duplicar tamanho</button>
+                    <button type="button" className="btn sm" disabled={!!ps.error} onClick={() => handleEncherFolha(art.id)}>Encher</button>
+                    <button type="button" className="btn sm" onClick={() => downloadArtPng(art)} title="Baixar PNG cortado">Baixar arte</button>
+                  </div>
+                </article>)}
               </div>
             )}
           </section>

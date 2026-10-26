@@ -47,6 +47,15 @@ export function computePrintSizeCm(
   }
 }
 
+/** Medidas explícitas por arte; preserva compatibilidade com o antigo lado maior. */
+export function getArtSourceSizeCm(art: ArtItem, maxSideCm: number) {
+  const base = computePrintSizeCm(art.trimmedWidthPx, art.trimmedHeightPx, maxSideCm)
+  return {
+    widthCm: art.widthCmOverride != null && art.widthCmOverride > 0 ? art.widthCmOverride : base.widthCm,
+    heightCm: art.heightCmOverride != null && art.heightCmOverride > 0 ? art.heightCmOverride : base.heightCm,
+  }
+}
+
 /**
  * DPI nativo por arte: densidade tal que o retângulo impresso (cm) tenha
  * pelo menos tantos pixels quanto o canvas de origem (trimmed), sem downscale.
@@ -60,7 +69,7 @@ export function artNativeDpi(art: ArtItem, maxSideCm: number): number {
   const wPx = art.trimmedWidthPx
   const hPx = art.trimmedHeightPx
   if (wPx <= 0 || hPx <= 0) return 0
-  const { widthCm, heightCm } = computePrintSizeCm(wPx, hPx, maxSideCm)
+  const { widthCm, heightCm } = getArtSourceSizeCm(art, maxSideCm)
   if (widthCm <= 0 || heightCm <= 0) return 0
   return Math.max(wPx / widthCm, hPx / heightCm) * 2.54
 }
