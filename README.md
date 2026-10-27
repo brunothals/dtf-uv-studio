@@ -116,3 +116,19 @@ Permita vários downloads no navegador para baixar todas as partes automaticamen
 - As opções de PDF e sensibilidade ficam em **Opções de PDF e recorte**. Páginas totalmente transparentes são informadas individualmente e não impedem importar as páginas válidas seguintes.
 
 A suíte de navegador também verifica a nova edição em desktop e celular: três artes com medidas distintas, ausência de rolagem horizontal de 320 a 1920 px, variantes, proporção, rotação, lotes, pedidos, exclusão/desfazer, seleção na prévia, zoom sem alteração dos bytes exportados, corredores de corte e PDFs com páginas vazias no início/meio/fim.
+
+
+## Opções adicionais de otimização e download
+
+Os modos existentes e os padrões continuam disponíveis sem mudanças.
+
+- **Otimização avançada (novo)**: compara seis combinações de ordenação/encaixe e mantém o melhor resultado, incluindo o MaxRects atual como referência. Em lotes maiores, limita as tentativas para reduzir processamento. Na tira de comprimento automático, testa comprimentos menores; é uma heurística, sem garantia de ótimo global.
+- **Girar cópias automaticamente**: disponível somente no modo novo e pode ser desligado. Permite orientações diferentes entre cópias do mesmo modelo, preservando tamanho, proporção, quantidade, margem e os espaços horizontal e vertical independentes. A rotação manual dos modos antigos continua funcionando.
+- **Download PNG → Automático (atual)**: conserva o comportamento anterior e os limites de memória por parte.
+- **Download PNG → Folha inteira**: um PNG por folha montada. No comprimento automático, exporta a tira contínua inteira. O codificador processa pequenas faixas, sem canvas gigante e sem reduzir DPI; requer CompressionStream e limita a saída comprimida a 512 MiB. Não une folhas independentes nem completa uma montagem que tenha erros.
+- **Download PNG → Várias folhas — sem cortar artes**: remonta o pedido em folhas independentes no comprimento escolhido, mantendo cada arte inteira. A prévia acompanha a paginação, cada folha vira um PNG e as medidas anteriores são recuperadas ao sair desta opção.
+- **Download PNG → Dividir em várias partes**: permite definir o comprimento máximo por parte. Limites de pixels podem subdividir também na largura. Procura corredores livres; caso não exista um corte seguro, mostra a advertência e as guias laranja. As partes preservam coordenadas, pixels, transparência e DPI, mas não são uma nova paginação. Para várias folhas sem cortar artes, escolha comprimento fixo antes de montar.
+
+Prévia, guias e quantidade de PNGs acompanham a escolha de download. Alterar a escolha limpa a lista de downloads anterior. Os fundos da prévia não entram nos PNGs.
+
+As melhorias são locais ao navegador, sem API, chave ou cobrança por montagem. O limite existente da tira automática continua em 500 cm.

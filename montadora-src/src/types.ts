@@ -8,7 +8,7 @@ export interface SheetPreset {
 }
 
 /** Modo de montagem das peças na folha. */
-export type PackMode = 'maxrects' | 'grade' | 'group_rows' | 'group_cols'
+export type PackMode = 'maxrects' | 'optimized' | 'grade' | 'group_rows' | 'group_cols'
 
 /** Folha fixa (multi-folha) vs rolo/folha sob medida (altura cresce). */
 export type SheetGrowMode = 'fixed' | 'auto_height'
@@ -39,6 +39,8 @@ export interface SheetConfig {
    * rotation is per-art via ArtItem.rotate90.
    */
   allowRotation: boolean
+  /** Only the additional optimized mode can rotate individual copies automatically. */
+  optimizedAutoRotation?: boolean
   /**
    * maxrects = aproveitar espaço (MaxRects, pode misturar artes).
    * grade = shelf first-fit em fileiras alinhadas (preenche vão da fileira antes de Folha N+1; como Organizador Grade).

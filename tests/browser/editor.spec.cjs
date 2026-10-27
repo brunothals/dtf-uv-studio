@@ -19,7 +19,7 @@ test('três artes, tela inteira, campos legíveis e X sem rolagem lateral',async
  if(page.viewportSize().width<950){await page.getByRole('button',{name:'Ver prévia',exact:true}).click();await expect(page.locator('.preview-stage')).toBeInViewport();await page.getByRole('button',{name:'Editar artes',exact:true}).click();await expect(page.locator('.art-editor').first()).toBeInViewport();}
  await page.getByRole('button',{name:'Excluir arte b.png',exact:true}).click();await expect(page.locator('.art-cm')).toHaveText(['1.000×0.500','3.000×1.500']);await page.getByRole('button',{name:'Desfazer exclusão (1)'}).click();await expect(page.locator('.art-cm')).toHaveText(['1.000×0.500','2.000×1.000','3.000×1.500']);
  await expect(page.locator('.layout-summary')).toContainText('18 de 18');
- await page.screenshot({path:`/tmp/dtf-editor-${page.viewportSize().width}.png`,fullPage:true});
+ await page.screenshot({path:test.info().outputPath(`dtf-editor-${page.viewportSize().width}.png`),fullPage:true});
 });
 
 test('variantes independentes, altura/largura, proporção e rotação conservam medidas',async({page})=>{

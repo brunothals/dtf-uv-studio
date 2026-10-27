@@ -7,6 +7,7 @@ import type {
   SheetConfig,
 } from '../types'
 import { MAX_AUTO_HEIGHT_CM } from '../types'
+import { optimizePacking } from './optimizedPacking'
 import { cmToPx, getArtSourceSizeCm, mmToPx, pxToCm, roundPx, roundDistancePx } from './units'
 
 /** Lado máximo do preview na UI (px) — exportação usa resolução nativa. */
@@ -47,8 +48,9 @@ export function getArtPrintSize(art: ArtItem, config: SheetConfig): ArtPrintSize
   const usableH = sheetH - 2 * marginPx
 
   let error: string | undefined
-  // Fit check uses the (possibly swapped) print size — packer never mixes orientations
-  if (!(widthPx <= usableW && heightPx <= usableH)) {
+  // Existing modes keep per-art orientation; the additional optimizer can turn each copy.
+  const canAutoTurn = config.packMode === 'optimized' && config.optimizedAutoRotation !== false
+  if (!(widthPx <= usableW && heightPx <= usableH) && !(canAutoTurn && heightPx <= usableW && widthPx <= usableH)) {
     if (grow) {
       error = `Não cabe na largura do rolo (${config.widthCm} cm, margem ${config.marginMm} mm) ou excede ${MAX_AUTO_HEIGHT_CM} cm de altura. Tamanho impresso: ${widthCm.toFixed(2)}×${heightCm.toFixed(2)} cm.`
     } else {
@@ -671,7 +673,14 @@ function packArtsAtDpi(
   const marginPx = roundDistancePx(mmToPx(packConfig.marginMm, packConfig.dpi))
 
   let sheets: PackedSheet[]
-  if (mode === 'grade') {
+  if (mode === 'optimized') {
+    const baseline = packMaxRects(validArts, validSizes, packConfig, { ...opts, skipPreview: true }, [])
+    sheets = optimizePacking(validArts, validSizes, packConfig, baseline)
+    if (!sheets.length) errors.push('Não foi possível encaixar todas as peças no modo otimizado.')
+    if (!grow && !opts.skipPreview) sheets = sheets.map((sheet) => ({ ...sheet,
+      previewUrl: sheet.index < opts.maxPreviewSheets ? buildPreviewUrl(sheet.widthPx, sheet.heightPx, sheet.placements) : '',
+    }))
+  } else if (mode === 'grade') {
     sheets = packGrade(validArts, validSizes, packConfig, opts)
   } else if (mode === 'group_rows' || mode === 'group_cols') {
     sheets = packGrouped(validArts, validSizes, packConfig, mode, opts)

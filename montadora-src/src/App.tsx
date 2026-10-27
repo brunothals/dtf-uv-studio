@@ -22,10 +22,11 @@ import {
 } from './utils/fillSheet'
 import {
   planPngDownloads,
-  planPngParts,
+  planOutputParts,
   downloadPngPart,
   type PngDownload,
   type PngPart,
+  type SheetExportOptions,
   resolveExportGeometry,
 } from './utils/exportPng'
 import { isPdfFile, loadPdfAsCanvases } from './utils/pdfImport'
@@ -231,6 +232,8 @@ export default function App() {
   const [batchWidth, setBatchWidth] = useState(5)
   const [batchGroup, setBatchGroup] = useState('')
   const [pngDownloads, setPngDownloads] = useState<PngDownload[]>([])
+  const [pngOutputMode, setPngOutputMode] = useState<'auto' | 'whole' | 'parts' | 'pages'>('auto')
+  const [partLengthCm, setPartLengthCm] = useState(50)
   const cancelExportRef = useRef(false)
   const [previewBackground, setPreviewBackground] = useState('dark')
   const [previewColor, setPreviewColor] = useState('#243047')
@@ -242,6 +245,10 @@ export default function App() {
   const [config, setConfig] = useState<SheetConfig>(() => calcPrefill
     ? { ...DEFAULT_CONFIG, widthCm: calcPrefill.widthCm, heightCm: calcPrefill.heightCm, ...(calcPrefill.gapMm != null ? { gapMm: calcPrefill.gapMm, gapXMm: calcPrefill.gapMm, gapYMm: calcPrefill.gapMm } : {}) }
     : { ...DEFAULT_CONFIG })
+  // Pagination is an additional view/export choice, without overwriting the user's sheet settings.
+  const layoutConfig = useMemo<SheetConfig>(() => pngOutputMode === 'pages'
+    ? { ...config, sheetGrowMode: 'fixed', heightCm: partLengthCm } : config,
+  [config, pngOutputMode, partLengthCm])
   /** Comprimento: '21'|'42'|'50'|'100'|'auto' (completar)|'custom' */
   const [widthChoice, setWidthChoice] = useState(() => !calcPrefill ? '29' : ['29', '41'].includes(String(calcPrefill.widthCm)) ? String(calcPrefill.widthCm) : 'custom')
   const [lengthChoice, setLengthChoice] = useState<string>(() => !calcPrefill ? '42' : ['21', '42', '50', '100'].includes(String(calcPrefill.heightCm)) ? String(calcPrefill.heightCm) : 'custom')
@@ -576,7 +583,7 @@ export default function App() {
     const art = arts.find((a) => a.id === id)
     if (!art) return
     const dpi = resolveExportDpi(arts, config)
-    const q = maxQtyOneArtOnOneSheet(art, { ...config, dpi })
+    const q = maxQtyOneArtOnOneSheet(art, { ...layoutConfig, dpi })
     setArts((prev) => prev.map((a) => (a.id === id ? { ...a, quantity: q } : a)))
     setStatus(
       q > 0
@@ -588,7 +595,7 @@ export default function App() {
   const handleDividirIguais = () => {
     const selected = arts.filter((a) => selectedIds[a.id])
     const dpi = resolveExportDpi(arts, config)
-    const cfg = { ...config, dpi }
+    const cfg = { ...layoutConfig, dpi }
     const fitting = selected.filter((a) => !getArtPrintSize(a, cfg).error)
     if (fitting.length === 0) {
       setStatus('Dividir iguais: selecione ao menos uma arte que caiba na folha.')
@@ -614,7 +621,7 @@ export default function App() {
 
   const handlePreencherSobras = () => {
     const dpi = resolveExportDpi(arts, config)
-    const cfg = { ...config, dpi }
+    const cfg = { ...layoutConfig, dpi }
     const hasOrdered = arts.some(
       (a) => a.quantity >= 1 && !getArtPrintSize(a, cfg).error,
     )
@@ -692,8 +699,8 @@ export default function App() {
 
   /** Config de export — dpi nativo ou preset (nunca o DPI do preview). */
   const exportPackConfig = useMemo(
-    () => ({ ...config, dpi: effectiveDpi }),
-    [config, effectiveDpi],
+    () => ({ ...layoutConfig, dpi: effectiveDpi }),
+    [layoutConfig, effectiveDpi],
   )
 
   /** DPI baixo só para packing + preview ao vivo (evita OOM ~780 DPI). */
@@ -716,8 +723,8 @@ export default function App() {
   }, [config.widthCm, config.heightCm, config.sheetGrowMode, config.cropEmptyExport, config.marginMm, effectiveDpi, previewDpi, sheets])
 
   const previewPackConfig = useMemo(
-    () => ({ ...config, dpi: previewDpi }),
-    [config, previewDpi],
+    () => ({ ...layoutConfig, dpi: previewDpi }),
+    [layoutConfig, previewDpi],
   )
 
   /** packConfig = preview (lista de tamanhos W×H cm usa as mesmas medidas em cm). */
@@ -769,12 +776,14 @@ export default function App() {
 
   const layoutPending = layoutInput?.arts !== arts || layoutInput?.config !== previewPackConfig
 
-  const exportOpts = useMemo(
+  const exportOpts = useMemo<SheetExportOptions>(
     () => ({
       cropEmpty: !!config.cropEmptyExport,
       marginMm: config.marginMm,
+      outputMode: pngOutputMode === 'pages' ? 'whole' : pngOutputMode,
+      partLengthCm,
     }),
-    [config.cropEmptyExport, config.marginMm],
+    [config.cropEmptyExport, config.marginMm, pngOutputMode, partLengthCm],
   )
 
   // A prévia acompanha o recorte da folha sem modificar o layout usado para exportar.
@@ -783,7 +792,7 @@ export default function App() {
     const geometry = resolveExportGeometry(full, effectiveDpi, exportOpts)
     return { ...full, ...geometry, previewUrl: '', utilizationPct: Math.min(100, geometry.placements.reduce((area, p) => area + p.width * p.height, 0) * 100 / (geometry.widthPx * geometry.heightPx)) }
   }), [sheets, previewDpi, effectiveDpi, exportOpts])
-  const exportPlans = useMemo(() => sheets.map(sheet => planPngParts(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts)), [sheets, previewDpi, effectiveDpi, exportOpts])
+  const exportPlans = useMemo(() => sheets.map(sheet => planOutputParts(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts)), [sheets, previewDpi, effectiveDpi, exportOpts])
   const counts = useMemo(() => ({
     requested: arts.reduce((n, art) => n + art.quantity, 0),
     placed: sheets.reduce((n, sheet) => n + sheet.placements.length, 0),
@@ -842,7 +851,7 @@ export default function App() {
     finally { setExporting(false) }
   }
 
-  useEffect(() => { setPngDownloads([]); cancelExportRef.current = true }, [arts, config])
+  useEffect(() => { setPngDownloads([]); cancelExportRef.current = true }, [arts, config, pngOutputMode, partLengthCm])
 
   const setGrowMode = (mode: SheetConfig['sheetGrowMode']) => {
     setConfig((c) => ({
@@ -855,7 +864,7 @@ export default function App() {
     }))
   }
 
-  const isAutoHeight = config.sheetGrowMode === 'auto_height'
+  const isAutoHeight = layoutConfig.sheetGrowMode === 'auto_height'
   const usedReadout = sheets[0]?.usedHeightCm
   const utilReadout = sheets[0]?.utilizationPct
 
@@ -951,10 +960,17 @@ export default function App() {
           aria-label="Modo de montagem"
         >
           <option value="maxrects">Máximo aproveitamento</option>
+          <option value="optimized">Otimização avançada (novo)</option>
           <option value="grade">Corte organizado</option>
           <option value="group_rows">Agrupar por arte / pedido</option>
           <option value="group_cols">Agrupar colunas</option>
         </select>
+
+        {config.packMode === 'optimized' && <label className="folha-tb-check">
+          <input type="checkbox" checked={config.optimizedAutoRotation !== false}
+            onChange={e => updateConfig('optimizedAutoRotation', e.target.checked)} />
+          Girar cópias automaticamente
+        </label>}
 
         <select
           className="folha-tb-select"
@@ -1005,6 +1021,20 @@ export default function App() {
         >
           ~{exportSizeEstimate.w}×{exportSizeEstimate.h} px · {effectiveDpi} DPI
         </span>
+
+        <label className="folha-tb-field"><span>Download PNG</span>
+          <select className="folha-tb-select" aria-label="Formato do download PNG" value={pngOutputMode}
+            disabled={exporting} onChange={e => setPngOutputMode(e.target.value as typeof pngOutputMode)}>
+            <option value="auto">Automático (atual)</option>
+            <option value="whole">Folha inteira — um PNG por folha</option>
+            <option value="pages">Várias folhas — sem cortar artes</option>
+            <option value="parts">Dividir em várias partes PNG</option>
+          </select>
+        </label>
+        {(pngOutputMode === 'parts' || pngOutputMode === 'pages') && <label className="folha-tb-field"><span>{pngOutputMode === 'pages' ? 'Comprimento por folha (cm)' : 'Comprimento por parte (cm)'}</span>
+          <input type="number" min={1} step={1} value={partLengthCm} disabled={exporting}
+            onChange={e => setPartLengthCm(Math.max(1, Number(e.target.value) || 50))} />
+        </label>}
 
         <div className="folha-tb-group folha-tb-export">
           <button
@@ -1068,8 +1098,12 @@ export default function App() {
         <label className="field"><span>Sensib. corte (alpha)</span><input type="number" min={0} max={255} step={1} value={config.alphaThreshold} disabled={!config.trimEnabled} onChange={e => updateConfig('alphaThreshold', Math.min(255, Math.max(0, Number(e.target.value) || 0)))} /></label>
         <p className="hint">Zero preserva todos os pixels visíveis. O recorte da arte é independente do recorte da folha. As fontes são preservadas no modo Máxima.</p>
       </details>
+      {config.packMode === 'optimized' && <p className="hint" role="status">Otimização avançada compara distribuições e, na tira contínua, busca reduzir o comprimento. A rotação pode variar entre cópias; medidas e quantidades são preservadas.</p>}
+      {pngOutputMode === 'whole' && <p className="hint">Folha inteira gera um PNG contínuo por folha, com transparência e DPI preservados. Para uma faixa única, escolha o comprimento automático. Arquivos grandes podem exigir mais tempo e memória no programa de impressão.</p>}
+      {pngOutputMode === 'parts' && <p className="hint">O comprimento informado é o máximo por parte. Os limites de memória podem gerar partes menores; as guias laranja avisam quando uma divisão atravessa uma arte. Para folhas independentes sem artes cortadas, escolha comprimento fixo na montagem.</p>}
+      {pngOutputMode === 'pages' && <p className="hint">A prévia remonta o pedido em folhas independentes com o comprimento escolhido, sem dividir artes. Cada folha gera um PNG inteiro. Ao trocar de opção, suas medidas de folha anteriores são recuperadas.</p>}
       <p className="layout-summary" aria-live="polite">{layoutPending && arts.length ? 'Atualizando montagem…' : `${counts.placed} de ${counts.requested} peça(s) montadas · ${sheets.length} folha(s)`}
-        {config.packMode === 'grade' ? ' · Corte organizado: fileiras alinhadas, da esquerda para a direita.' : config.packMode === 'maxrects' ? ' · Máximo aproveitamento pode exigir mais cortes.' : ' · Cópias da mesma arte e pedidos iguais ficam juntos.'}
+        {config.packMode === 'grade' ? ' · Corte organizado: fileiras alinhadas, da esquerda para a direita.' : config.packMode === 'maxrects' || config.packMode === 'optimized' ? ' · Aproveitamento de espaços pode exigir mais cortes.' : ' · Cópias da mesma arte e pedidos iguais ficam juntos.'}
         {isAutoHeight ? ` · Folha sob medida, até ${MAX_AUTO_HEIGHT_CM} cm.` : ''}</p>
       <nav className="editor-navigation" aria-label="Atalhos da montadora">
         <button type="button" className="btn sm" onClick={() => document.getElementById('studio-arts')?.scrollIntoView({ block: 'start', behavior: 'smooth' })}>Editar artes</button>
@@ -1188,7 +1222,7 @@ export default function App() {
                       <span>
                         {isAutoHeight
                           ? `${config.widthCm} × ${sheet.usedHeightCm?.toFixed(3) ?? '?'} cm`
-                          : `${config.widthCm} × ${config.heightCm} cm`}
+                          : `${layoutConfig.widthCm} × ${layoutConfig.heightCm} cm`}
                         {' · '}
                         {sheet.placements.length} peça(s)
                         {' · '}Exportação: {(() => { const g = resolveExportGeometry(scalePackedSheet(sheet, previewDpi, effectiveDpi), effectiveDpi, exportOpts); return `${(g.widthPx * 2.54 / effectiveDpi).toFixed(3)} × ${(g.heightPx * 2.54 / effectiveDpi).toFixed(3)} cm` })()}

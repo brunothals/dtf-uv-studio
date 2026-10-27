@@ -148,6 +148,10 @@ export interface SheetExportOptions {
   cropEmpty?: boolean
   /** Margem ao redor do conteúdo no crop (mm). Default: config.marginMm via caller. */
   marginMm?: number
+  /** Existing automatic division remains the default. */
+  outputMode?: 'auto' | 'whole' | 'parts'
+  /** Maximum requested length per part; memory limits can subdivide it further. */
+  partLengthCm?: number
 }
 
 /**
@@ -199,7 +203,9 @@ export function planPngParts(
   }
   const side = Math.floor(Math.sqrt(limits.maxPixels))
   const tileW = Math.min(width, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / Math.min(height, side))))
-  const tileH = Math.min(height, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / tileW)))
+  const requestedHeight = options?.outputMode === 'parts' && Number.isFinite(options.partLengthCm) && options.partLengthCm! > 0
+    ? Math.max(1, Math.floor(options.partLengthCm! * dpi / 2.54)) : height
+  const tileH = Math.min(height, requestedHeight, limits.maxSide, Math.max(1, Math.floor(limits.maxPixels / tileW)))
   // Projeções dos retângulos: um corte no intervalo aberto atravessaria uma arte.
   const cutBefore = (start: number, limit: number, intervals: [number, number][]) => {
     const merged: [number, number][] = []
@@ -298,20 +304,28 @@ export interface PngDownload {
   part: PngPart
   filename: string
   options?: SheetExportOptions
+  whole?: boolean
+}
+
+export function planOutputParts(sheet: PackedSheet, dpi: number, options?: SheetExportOptions): PngPart[] {
+  if (options?.outputMode !== 'whole') return planPngParts(sheet, dpi, options)
+  const geometry = resolveExportGeometry(sheet, dpi, options)
+  return [{ index: 0, row: 1, column: 1, x: 0, y: 0, widthPx: geometry.widthPx, heightPx: geometry.heightPx }]
 }
 
 export function planPngDownloads(sheets: PackedSheet[], dpi: number, options?: SheetExportOptions, clientName?: string, totalSheets = sheets.length): PngDownload[] {
   return sheets.flatMap((sheet) => {
     const base = buildSheetFilename(sheet, totalSheets, clientName)
-    const parts = planPngParts(sheet, dpi, options)
-    return parts.map((part) => ({ sheet, dpi, part, options, filename: parts.length === 1 ? base :
+    const parts = planOutputParts(sheet, dpi, options)
+    return parts.map((part) => ({ sheet, dpi, part, options, whole: options?.outputMode === 'whole', filename: parts.length === 1 ? base :
       `${base.replace(/\.png$/i, '')}-parte-${String(part.index + 1).padStart(2, '0')}-L${part.row}-C${part.column}-x${part.x}-y${part.y}.png` }))
   })
 }
 
 /** Um único Blob e URL de download por vez; sem ZIP nem bytes de outras partes retidos. */
 export async function downloadPngPart(item: PngDownload): Promise<void> {
-  const blob = await sheetPartToPngBlob(item.sheet, item.dpi, item.part, item.options)
+  const blob = item.whole ? await sheetWholeToPngBlob(item.sheet, item.dpi, item.options)
+    : await sheetPartToPngBlob(item.sheet, item.dpi, item.part, item.options)
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
@@ -324,5 +338,77 @@ export async function downloadPngPart(item: PngDownload): Promise<void> {
   } finally {
     anchor.remove()
     URL.revokeObjectURL(url)
+  }
+}
+
+function pngChunk(type: string, data: Uint8Array): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(data.length + 12)
+  new DataView(out.buffer).setUint32(0, data.length)
+  out.set(new TextEncoder().encode(type), 4)
+  out.set(data, 8)
+  new DataView(out.buffer).setUint32(out.length - 4, crc32(out.subarray(4, out.length - 4)))
+  return out
+}
+
+/** One PNG, encoded in small raster bands: never allocate a full-sheet canvas. */
+export async function sheetWholeToPngBlob(sheet: PackedSheet, dpi: number, options?: SheetExportOptions): Promise<Blob> {
+  const g = resolveExportGeometry(sheet, dpi, options)
+  const { widthPx: width, heightPx: height } = g
+  if (![width, height].every(n => Number.isSafeInteger(n) && n > 0 && n <= 0x7fffffff) ||
+      width * 4 + 1 > 16 * 1024 * 1024) throw new Error('Folha larga demais para um PNG inteiro. Use a divisão em partes.')
+  if (typeof CompressionStream === 'undefined') throw new Error('Este navegador não suporta PNG inteiro por faixas. Use um navegador atualizado ou a divisão em partes.')
+  const header = new Uint8Array(13)
+  const view = new DataView(header.buffer)
+  view.setUint32(0, width); view.setUint32(4, height)
+  header[8] = 8; header[9] = 6 // RGBA, 8 bits, no interlace.
+  const chunks: BlobPart[] = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header), buildPhysChunk(Math.round(dpi / 0.0254)) as Uint8Array<ArrayBuffer>]
+  const compressor = new CompressionStream('deflate')
+  const writer = compressor.writable.getWriter()
+  const reader = compressor.readable.getReader()
+  // Drain concurrently: writing without reading would block on stream backpressure.
+  const drain = (async () => {
+    let total = 0
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.length
+      if (total > 512 * 1024 * 1024) {
+        await reader.cancel('Limite de saída atingido')
+        throw new Error('PNG inteiro excede 512 MB. Use a divisão em partes.')
+      }
+      chunks.push(pngChunk('IDAT', value))
+    }
+  })()
+  // Attach immediately, so a reader failure never becomes an unhandled rejection.
+  void drain.catch(error => writer.abort(error).catch(() => {}))
+  try {
+    const stride = width * 4 + 1
+    const bandSize = Math.max(1, Math.min(32, Math.floor(8 * 1024 * 1024 / stride)))
+    for (let y = 0; y < height; y += bandSize) {
+      const h = Math.min(bandSize, height - y)
+      const band = new Uint8Array(stride * h) // Filter byte zero on each row.
+      for (let x = 0; x < width; x += PNG_PART_LIMITS.maxSide) {
+        const w = Math.min(PNG_PART_LIMITS.maxSide, width - x)
+        const canvas = renderTile(width, x, y, w, h, g.placements)
+        try {
+          if (canvas.width !== w || canvas.height !== h) throw new Error('Memória insuficiente para gerar PNG inteiro. Use partes.')
+          const data = canvas.getContext('2d')!.getImageData(0, 0, w, h).data
+          for (let row = 0; row < h; row++) band.set(data.subarray(row * w * 4, (row + 1) * w * 4), row * stride + 1 + x * 4)
+        } finally { canvas.width = 0; canvas.height = 0 }
+      }
+      await writer.write(band)
+      // Yield between bands so the browser can paint progress and remain interactive.
+      if (y % (bandSize * 32) === 0) await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    await writer.close()
+    await drain
+    chunks.push(pngChunk('IEND', new Uint8Array()))
+    return new Blob(chunks, { type: 'image/png' })
+  } catch (error) {
+    await writer.abort(error).catch(() => {})
+    await reader.cancel(error).catch(() => {})
+    await drain.catch(() => {})
+    throw error
   }
 }

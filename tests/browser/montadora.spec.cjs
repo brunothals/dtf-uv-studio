@@ -55,7 +55,7 @@ test('montadora integrada: importar, espaçar, exportar, navegar e conferir celu
  await page.getByRole('combobox',{name:'Comprimento da folha',exact:true}).selectOption('custom');await page.getByRole('spinbutton',{name:'Compr. (cm)',exact:true}).fill('1');await page.getByLabel('Largura detalhes.png').fill('0.2');await page.getByRole('spinbutton',{name:'Espaço H (cm)',exact:true}).fill('0.4');await expect(page.locator('.art-cm')).toHaveText('0.200×0.100');await expect(page.locator('.sheet-meta')).toContainText('Exportação:');
  await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('high');await expect(page.getByRole('status').filter({hasText:'A qualidade selecionada'})).toContainText('reduz os pixels');await page.getByRole('combobox',{name:'Qualidade do export',exact:true}).first().selectOption('native');
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'PNG',exact:true}).click();expect((await download).suggestedFilename()).toMatch(/\.png$/);
- if(page.viewportSize().width<600)await page.screenshot({path:'/tmp/dtf-studio-montadora.png',fullPage:true});
+ if(page.viewportSize().width<600)await page.screenshot({path:test.info().outputPath('dtf-studio-montadora.png'),fullPage:true});
  const sizes=await page.evaluate(()=>({doc:document.documentElement.scrollWidth,viewport:innerWidth}));expect(sizes.doc).toBeLessThanOrEqual(sizes.viewport);
  await page.getByRole('link',{name:'Calculadora e orçamentos'}).click();await expect(page.locator('#btn-calc')).toBeVisible();
 });
