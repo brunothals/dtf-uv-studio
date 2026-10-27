@@ -1,4 +1,4 @@
-import logoUrl from '../../../assets/dtfuvmania-logo.jpg'
+import logoUrl from '../../../assets/dtfuvmania-logo-transparent.png'
 import { customerMoney, moneyText, type CustomerOrder } from './customerOrder'
 
 export interface ApprovalArt {
@@ -65,7 +65,9 @@ export async function renderApprovalPages(arts: ApprovalArt[], order: CustomerOr
       const gradient = ctx.createLinearGradient(0, 0, width, 0)
       gradient.addColorStop(0, BRAND.cyan); gradient.addColorStop(.5, BRAND.pink); gradient.addColorStop(1, BRAND.yellow)
       ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, 10)
-      ctx.fillStyle = '#fff'; ctx.fillRect(48, 30, 240, 160); ctx.drawImage(logo, 48, 30, 240, 160)
+      const logoScale = Math.min(240 / logo.naturalWidth, 160 / logo.naturalHeight)
+      const logoW = logo.naturalWidth * logoScale, logoH = logo.naturalHeight * logoScale
+      ctx.drawImage(logo, 48 + (240 - logoW) / 2, 30 + (160 - logoH) / 2, logoW, logoH)
       ctx.fillStyle = '#fff'; ctx.font = 'bold 46px Arial'; ctx.fillText('Sua arte, pronta para conferir.', 330, 90)
       ctx.font = '24px Arial'; ctx.fillStyle = '#dddbe5'; ctx.fillText('DTF UV MANIA  /  APROVAÇÃO DO PEDIDO', 332, 136)
       ctx.fillStyle = BRAND.cyan; ctx.font = '22px Arial'; ctx.fillText('dtfuvmania.com.br', 332, 175)
