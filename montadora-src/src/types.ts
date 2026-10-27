@@ -73,6 +73,13 @@ export interface SheetConfig {
   cropEmptyExport: boolean
 }
 
+export interface ArtPreparation {
+  cleanSpecks: boolean
+  maxSpeckPixels: number
+  thicken: boolean
+  radiusPx: number
+}
+
 export interface ArtItem {
   id: string
   name: string
@@ -99,6 +106,10 @@ export interface ArtItem {
   lockAspect?: boolean
   groupName?: string
   error?: string
+  preparation?: ArtPreparation
+  preparationStats?: { removedPixels: number; addedPixels: number }
+  originalPreviewUrl?: string
+  preparedPreviewUrl?: string
 }
 
 export interface PackedPlacement {

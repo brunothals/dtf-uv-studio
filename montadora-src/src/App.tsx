@@ -4,6 +4,7 @@ import {
   DEFAULT_CONFIG,
   MAX_AUTO_HEIGHT_CM,
   type ArtItem,
+  type ArtPreparation,
   type PackedSheet,
   type PackMode,
   type SheetConfig,
@@ -32,6 +33,8 @@ import {
 import { isPdfFile, loadPdfAsCanvases } from './utils/pdfImport'
 import { cmToPx, computeNativeExportDpi, resolveExportDpi, roundPx } from './utils/units'
 import { resizeArt } from './utils/artEditing'
+import { prepareArt } from './utils/prepareArt'
+import { auditQuantities, sourceResolutionDpi } from './utils/preflight'
 import { fitArtToBox, parseCalcPrefill } from './utils/calcPrefill'
 import './App.css'
 
@@ -111,8 +114,12 @@ function buildArtItem(
   quantity = 1,
   maxSideCmOverride: number | null = null,
   rotate90 = false,
+  preparation?: ArtPreparation,
 ): ArtItem {
-  const trimmed = applyTrim(originalCanvas, trimEnabled, alphaThreshold)
+  const active = preparation && (preparation.cleanSpecks || preparation.thicken) ? preparation : undefined
+  const processed = prepareArt(originalCanvas, active)
+  const trimmed = applyTrim(processed.canvas, trimEnabled, alphaThreshold)
+  const before = active ? applyTrim(originalCanvas, trimEnabled, alphaThreshold) : null
   return {
     id,
     name,
@@ -127,6 +134,10 @@ function buildArtItem(
     quantity,
     maxSideCmOverride,
     rotate90,
+    preparation: active,
+    preparationStats: active ? processed.stats : undefined,
+    originalPreviewUrl: before ? makeThumbnailDataUrl(before.canvas, before.width, before.height, 400) : undefined,
+    preparedPreviewUrl: active ? makeThumbnailDataUrl(trimmed.canvas, trimmed.width, trimmed.height, 400) : undefined,
   }
 }
 
@@ -234,6 +245,11 @@ export default function App() {
   const [pngDownloads, setPngDownloads] = useState<PngDownload[]>([])
   const [pngOutputMode, setPngOutputMode] = useState<'auto' | 'whole' | 'parts' | 'pages'>('auto')
   const [partLengthCm, setPartLengthCm] = useState(50)
+  const [preparation, setPreparation] = useState<ArtPreparation>({ cleanSpecks: false, maxSpeckPixels: 4, thicken: false, radiusPx: 1 })
+  const [preparing, setPreparing] = useState(false)
+  const [checkResolution, setCheckResolution] = useState(false)
+  const [minimumSourceDpi, setMinimumSourceDpi] = useState(300)
+  const [checkQuantities, setCheckQuantities] = useState(false)
   const cancelExportRef = useRef(false)
   const [previewBackground, setPreviewBackground] = useState('dark')
   const [previewColor, setPreviewColor] = useState('#243047')
@@ -350,6 +366,7 @@ export default function App() {
           art.quantity,
           art.maxSideCmOverride,
           art.rotate90,
+          art.preparation,
         ) }; return art.lockAspect !== false && art.widthCmOverride != null ? resizeArt(next, 'width', getArtPrintSize(art, config).widthCm, config.maxSideCm) : next
       })
     })
@@ -550,6 +567,35 @@ export default function App() {
   }
   const setArtMeasurement = (id: string, axis: 'width' | 'height', value: string) => {
     setArts(prev => prev.map(art => art.id === id ? resizeArt(art, axis, Number(value), config.maxSideCm) : art))
+  }
+
+  const handlePreparation = async (reset = false, onlyId?: string) => {
+    const selected = arts.filter(a => onlyId ? a.id === onlyId : selectedIds[a.id])
+    if (!selected.length || preparing) return
+    setPreparing(true)
+    setStatus(reset ? 'Restaurando imagens originais…' : 'Preparando cópias das artes selecionadas…')
+    // Paint the busy state before running local pixel processing.
+    await new Promise(resolve => window.setTimeout(resolve, 0))
+    const results = new Map<string, ArtItem>(), failures: string[] = []
+    try {
+      for (const art of selected) {
+        try {
+          let next = { ...art, ...buildArtItem(art.id, art.name, art.originalCanvas,
+            art.originalWidthPx, art.originalHeightPx, config.trimEnabled, config.alphaThreshold,
+            art.quantity, art.maxSideCmOverride, art.rotate90, reset ? undefined : { ...preparation }) }
+          // Keep the requested longest physical side; unlocked measurements remain explicit.
+          if (art.lockAspect !== false && art.widthCmOverride != null) {
+            const before = getArtPrintSize(art, config)
+            const landscape = art.rotate90 ? next.trimmedHeightPx >= next.trimmedWidthPx : next.trimmedWidthPx >= next.trimmedHeightPx
+            const axis = landscape ? 'width' : 'height'
+            next = resizeArt(next, axis, Math.max(before.widthCm, before.heightCm), config.maxSideCm)
+          }
+          results.set(art.id, next)
+        } catch (error) { failures.push(`${art.name}: ${error instanceof Error ? error.message : String(error)}`) }
+      }
+      setArts(prev => prev.map(art => results.get(art.id) ?? art))
+      setStatus(`${results.size} arte(s) ${reset ? 'restaurada(s)' : 'preparada(s)'}. ${failures.length ? failures.join(' · ') : 'Originais preservados; confira a comparação em cada arte.'}`)
+    } finally { setPreparing(false) }
   }
   const applyToSelected = (operation: 'quantity' | 'width' | 'group') => {
     setArts(prev => prev.map(art => !selectedIds[art.id] ? art : operation === 'quantity'
@@ -797,13 +843,16 @@ export default function App() {
     requested: arts.reduce((n, art) => n + art.quantity, 0),
     placed: sheets.reduce((n, sheet) => n + sheet.placements.length, 0),
   }), [arts, sheets])
+  const quantityAudit = useMemo(() => checkQuantities ? auditQuantities(arts, sheets) : null, [checkQuantities, arts, sheets])
 
 
   /** Recupera o mesmo layout físico em resolução de exportação; falhas não usam um preview antigo. */
   const packForExport = (): PackedSheet[] => {
+    if (preparing) throw new Error('Aguarde a preparação das artes antes de baixar.')
     const { sheets: packed, errors } = packArts(arts, exportPackConfig, { skipPreview: true })
     if (errors.length) throw new Error(errors.join('\n'))
     if (!packed.length) throw new Error('Nenhuma folha para exportar. Verifique as artes e suas quantidades.')
+    if (checkQuantities && !auditQuantities(arts, packed).valid) throw new Error('Conferência de quantidades: há modelos faltando ou a mais. Confira o pedido antes de baixar.')
     return packed
   }
 
@@ -1050,7 +1099,7 @@ export default function App() {
             <button
               type="button"
               className="btn primary sm"
-              disabled={exporting || loading || layoutPending}
+              disabled={exporting || loading || preparing || layoutPending}
               onClick={handleExportAll}
             >
               {sheets.length === 1 && (exportPlans[0]?.length ?? 0) === 1 ? 'Baixar PNG' : 'Baixar PNGs'}
@@ -1098,6 +1147,40 @@ export default function App() {
         <label className="field"><span>Sensib. corte (alpha)</span><input type="number" min={0} max={255} step={1} value={config.alphaThreshold} disabled={!config.trimEnabled} onChange={e => updateConfig('alphaThreshold', Math.min(255, Math.max(0, Number(e.target.value) || 0)))} /></label>
         <p className="hint">Zero preserva todos os pixels visíveis. O recorte da arte é independente do recorte da folha. As fontes são preservadas no modo Máxima.</p>
       </details>
+      <details className="advanced-settings preparation-panel"><summary>Preparação e conferência DTF UV (opcional)</summary>
+        <fieldset disabled={preparing || loading || exporting}>
+          <legend>Ajustes nas imagens selecionadas</legend>
+          <label><input type="checkbox" checked={preparation.cleanSpecks} onChange={e => setPreparation(p => ({ ...p, cleanSpecks: e.target.checked }))} /> Limpar pixels isolados</label>
+          <label className="field"><span>Remover grupos de até (pixels)</span><input type="number" min={1} max={100} step={1} disabled={!preparation.cleanSpecks}
+            value={preparation.maxSpeckPixels} onChange={e => setPreparation(p => ({ ...p, maxSpeckPixels: Math.max(1, Math.min(100, Math.floor(Number(e.target.value)) || 1)) }))} /></label>
+          <label><input type="checkbox" checked={preparation.thicken} onChange={e => setPreparation(p => ({ ...p, thicken: e.target.checked }))} /> Engrossar traços</label>
+          <label className="field"><span>Expansão (pixels da imagem)</span><input type="number" min={1} max={3} step={1} disabled={!preparation.thicken}
+            value={preparation.radiusPx} onChange={e => setPreparation(p => ({ ...p, radiusPx: Math.max(1, Math.min(3, Math.floor(Number(e.target.value)) || 1)) }))} /></label>
+          <p className="hint">Marcar uma opção não altera as artes: clique em Aplicar. A limpeza remove pequenos grupos separados e preserva o maior elemento. Pode remover pontos de letras ou detalhes pequenos; compare antes de imprimir. O engrossamento pode fechar vazados estreitos. Valores em pixels da imagem original, sem reamostragem.</p>
+          <div className="row-actions">
+            <button type="button" className="btn sm" disabled={!arts.some(a => selectedIds[a.id])} onClick={() => void handlePreparation()}>Aplicar às selecionadas</button>
+            <button type="button" className="btn sm" disabled={!arts.some(a => selectedIds[a.id] && a.preparation)} onClick={() => void handlePreparation(true)}>Restaurar selecionadas</button>
+          </div>
+          <p className="hint">Ajustes desligados por padrão. Novas importações mantêm o original até você aplicar. Reaplicar começa sempre do original, sem engrossar repetidamente. A prévia e os downloads usam o resultado.</p>
+        </fieldset>
+        <fieldset disabled={preparing || exporting}>
+          <legend>Conferências opcionais</legend>
+          <label><input type="checkbox" checked={checkResolution} onChange={e => setCheckResolution(e.target.checked)} /> Alertar baixa resolução no tamanho de impressão</label>
+          <label className="field"><span>Resolução mínima de referência (DPI)</span><input type="number" min={72} max={1200} step={1} value={minimumSourceDpi} disabled={!checkResolution}
+            onChange={e => setMinimumSourceDpi(Math.max(72, Math.min(1200, Number(e.target.value) || 300)))} /></label>
+          <p className="hint">O alerta usa a densidade dos pixels da arte no tamanho impresso, pelo eixo de menor resolução. Exportar em mais DPI não cria detalhes. O alerta é informativo e não bloqueia o download.</p>
+          <label><input type="checkbox" checked={checkQuantities} onChange={e => setCheckQuantities(e.target.checked)} /> Conferir quantidades antes de baixar</label>
+          <p className="hint">Compara cada modelo com as quantidades atuais da lista e bloqueia o download se houver diferença. Não interpreta quantidades escritas nos nomes dos arquivos.</p>
+        </fieldset>
+      </details>
+      {quantityAudit && <section className="card quantity-audit" aria-label="Conferência de quantidades">
+        <p role="status">{layoutPending ? 'Conferindo montagem…' : quantityAudit.valid ? `Quantidades conferidas: ${quantityAudit.placed} de ${quantityAudit.requested} peça(s), modelo por modelo.` : `Divergência: ${quantityAudit.placed} montada(s) para ${quantityAudit.requested} solicitada(s).`}</p>
+        <details><summary>Conferência por modelo</summary><div className="audit-table-scroll"><table>
+          <thead><tr><th>Modelo</th><th>Pedido</th><th>Montado</th></tr></thead>
+          <tbody>{quantityAudit.rows.map(row => <tr key={row.id} className={row.requested !== row.placed ? 'cut-alert' : ''}><td>{row.name}</td><td>{row.requested}</td><td>{row.placed}</td></tr>)}
+          {quantityAudit.unknown.map(([id, count]) => <tr key={id} className="cut-alert"><td>Modelo desconhecido: {id}</td><td>0</td><td>{count}</td></tr>)}</tbody>
+        </table></div></details>
+      </section>}
       {config.packMode === 'optimized' && <p className="hint" role="status">Otimização avançada compara distribuições e, na tira contínua, busca reduzir o comprimento. A rotação pode variar entre cópias; medidas e quantidades são preservadas.</p>}
       {pngOutputMode === 'whole' && <p className="hint">Folha inteira gera um PNG contínuo por folha, com transparência e DPI preservados. Para uma faixa única, escolha o comprimento automático. Arquivos grandes podem exigir mais tempo e memória no programa de impressão.</p>}
       {pngOutputMode === 'parts' && <p className="hint">O comprimento informado é o máximo por parte. Os limites de memória podem gerar partes menores; as guias laranja avisam quando uma divisão atravessa uma arte. Para folhas independentes sem artes cortadas, escolha comprimento fixo na montagem.</p>}
@@ -1153,7 +1236,7 @@ export default function App() {
               {pngDownloads.some(item => item.part.cutsArtwork) && <p className="cut-alert" role="alert">Uma arte ultrapassa os limites de uma parte ou não há corredor livre para o corte. Confira as divisões antes de imprimir: essa arte será dividida entre PNGs.</p>}
               <p className="hint">Permita vários downloads no navegador ou baixe cada parte abaixo. Imprima a 100%, sem ajustar à página. Os nomes indicam linha (L), coluna (C) e posição em pixels na folha exportada.</p>
               {pngDownloads.map((item) => <button type="button" className="btn sm" key={item.filename}
-                disabled={exporting || loading || layoutPending} onClick={() => void handleDownloadPart(item)}>
+                disabled={exporting || loading || preparing || layoutPending} onClick={() => void handleDownloadPart(item)}>
                 {item.filename} · {(item.part.widthPx * 2.54 / item.dpi).toFixed(3)} × {(item.part.heightPx * 2.54 / item.dpi).toFixed(3)} cm
               </button>)}
             </section>}
@@ -1233,7 +1316,7 @@ export default function App() {
                       <button
                         type="button"
                         className="btn sm"
-                        disabled={exporting || loading || layoutPending}
+                        disabled={exporting || loading || preparing || layoutPending}
                         onClick={() => handleExportOne(sheet)}
                       >
                         PNG
@@ -1329,6 +1412,15 @@ export default function App() {
                     <label className="field"><span>Identificação do pedido</span><input value={art.groupName ?? ''} maxLength={80} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, groupName: e.target.value } : a))} aria-label={`Pedido ${art.name}`} /></label>
                   </details>
                   <p className="mono art-cm">{ps.widthCm.toFixed(3)}×{ps.heightCm.toFixed(3)}{art.rotate90 ? ' ↻' : ''}</p>
+                  {checkResolution && art.quantity > 0 && <p className={Math.round(sourceResolutionDpi(art, config.maxSideCm)) < minimumSourceDpi ? 'cut-alert source-resolution' : 'hint source-resolution'}>
+                    {Math.round(sourceResolutionDpi(art, config.maxSideCm)) < minimumSourceDpi ? 'Baixa resolução' : 'Resolução da arte'}: {Math.round(sourceResolutionDpi(art, config.maxSideCm))} DPI no tamanho impresso · referência {minimumSourceDpi} DPI.
+                  </p>}
+                  {art.preparation && <details className="art-comparison"><summary>Comparar original e resultado</summary>
+                    <div className="comparison-images"><figure><figcaption>Original</figcaption><div className="checker"><img src={art.originalPreviewUrl} alt={`Original ${art.name}`} /></div></figure>
+                    <figure><figcaption>Resultado</figcaption><div className="checker"><img src={art.preparedPreviewUrl} alt={`Resultado ${art.name}`} /></div></figure></div>
+                    <p className="hint">{art.preparationStats?.removedPixels ?? 0} pixel(s) removido(s) · {art.preparationStats?.addedPixels ?? 0} pixel(s) de expansão.</p>
+                    <button type="button" className="btn sm" disabled={preparing || exporting} onClick={() => void handlePreparation(true, art.id)}>Restaurar original {art.name}</button>
+                  </details>}
                   {ps.error && <p className="err">{ps.error}</p>}
                   <div className="row-actions">
                     <button type="button" className={`btn sm${art.rotate90 ? ' primary' : ''}`} aria-pressed={art.rotate90} onClick={() => toggleRotate90(art.id)} title="Girar 90°">90°</button>

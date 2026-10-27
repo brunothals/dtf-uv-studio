@@ -132,3 +132,17 @@ Os modos existentes e os padrões continuam disponíveis sem mudanças.
 Prévia, guias e quantidade de PNGs acompanham a escolha de download. Alterar a escolha limpa a lista de downloads anterior. Os fundos da prévia não entram nos PNGs.
 
 As melhorias são locais ao navegador, sem API, chave ou cobrança por montagem. O limite existente da tira automática continua em 500 cm.
+
+
+## Preparação e conferência DTF UV (opcional)
+
+Todas as quatro opções iniciam **desligadas** e não usam API. Abra o painel correspondente para escolher o que usar.
+
+- **Limpar pixels isolados**: remove componentes de até 1–100 pixels usando conectividade de oito vizinhos, mantendo sempre o maior componente. O limite padrão é 4 pixels. Branco e antialias conectados ao desenho são preservados; pontos de letras e detalhes separados podem ser removidos, por isso há comparação visual. Não é remoção de fundo branco.
+- **Engrossar traços**: expansão de alpha por disco de 1–3 pixels da imagem original. Acrescenta margem para não cortar tinta nas bordas e conserva as cores nos pixels já existentes. A expansão pode fechar vazados estreitos.
+- Os dois ajustes só entram após **Aplicar às selecionadas**. Novas importações permanecem originais até aplicar. O processamento começa sempre do canvas original, sem acumular engrossamento. As artes guardam os parâmetros e a contagem de pixels alterados. Comparação original/resultado e restauração por arte ou seleção ficam disponíveis. Prévia, PNG individual e folhas usam o resultado.
+- O lado maior físico solicitado é mantido nos ajustes com proporção travada. Medidas independentes continuam explícitas. O arquivo original e a quantidade não são sobrescritos.
+- **Alertar baixa resolução**: mostra a densidade da imagem no tamanho físico de impressão, pelo eixo mais fraco; referência ajustável de 72–1200 DPI, padrão 300. O alerta é informativo. Definir mais DPI no export não aumenta a resolução da fonte.
+- **Conferir quantidades antes de baixar**: exibe o pedido e a quantidade montada por ID de modelo; com a opção ligada, uma divergência impede exportar folhas. Detecta modelos trocados mesmo quando o total é igual. Compara com a lista atual, incluindo alterações manuais e cópias extras pedidas; não lê quantidades dos nomes dos arquivos.
+
+Para limitar a memória, a preparação é aceita até 16 megapixels por arte. Uma falha mantém o estado anterior da arte e informa o problema. Desmarcar as opções e aplicar ou usar Restaurar recupera a imagem original com o recorte vigente.
