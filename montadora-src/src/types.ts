@@ -105,6 +105,8 @@ export interface ArtItem {
   heightCmOverride?: number | null
   lockAspect?: boolean
   groupName?: string
+  color?: string
+  approvalName?: string
   error?: string
   preparation?: ArtPreparation
   preparationStats?: { removedPixels: number; addedPixels: number }

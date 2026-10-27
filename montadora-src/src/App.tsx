@@ -35,6 +35,8 @@ import { cmToPx, computeNativeExportDpi, resolveExportDpi, roundPx } from './uti
 import { resizeArt } from './utils/artEditing'
 import { prepareArt } from './utils/prepareArt'
 import { auditQuantities, sourceResolutionDpi } from './utils/preflight'
+import { readCustomerOrder, customerConfirmation, type CustomerOrder } from './utils/customerOrder'
+import { renderApprovalPages, approvalDisplayName, type ApprovalOptions, type ApprovalArt } from './utils/approval'
 import { fitArtToBox, parseCalcPrefill } from './utils/calcPrefill'
 import './App.css'
 
@@ -250,6 +252,13 @@ export default function App() {
   const [checkResolution, setCheckResolution] = useState(false)
   const [minimumSourceDpi, setMinimumSourceDpi] = useState(300)
   const [checkQuantities, setCheckQuantities] = useState(false)
+  const [customerOrder, setCustomerOrder] = useState<CustomerOrder>(() => readCustomerOrder(window.location.search))
+  const [approvalOptions, setApprovalOptions] = useState<ApprovalOptions>({ pages: false, backdrop: 'auto', revision: '1' })
+  const [approvalWithPng, setApprovalWithPng] = useState(false)
+  const [approvalBusy, setApprovalBusy] = useState(false)
+  const [approvalUrls, setApprovalUrls] = useState<string[]>([])
+  const [confirmation, setConfirmation] = useState('')
+  const approvalVersion = useRef(0)
   const cancelExportRef = useRef(false)
   const [previewBackground, setPreviewBackground] = useState('dark')
   const [previewColor, setPreviewColor] = useState('#243047')
@@ -279,7 +288,7 @@ export default function App() {
   /** Checkbox por arte (default marcado ao importar) — usado em Dividir iguais */
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({})
   /** Prefixo opcional nos arquivos exportados */
-  const [clientName, setClientName] = useState('')
+  const [clientName, setClientName] = useState(customerOrder.name)
   /** Pular PNGs com mesmo nome+tamanho já na lista */
   const skipDuplicateNames = false
   /** Erro fatal de packing/preview (canvas OOM etc.) */
@@ -856,6 +865,56 @@ export default function App() {
     return packed
   }
 
+  const customerData = () => {
+    const packed = packForExport()
+    const audit = auditQuantities(arts, packed)
+    if (!audit.valid) throw new Error('Confira as quantidades antes de gerar a aprovação do cliente.')
+    const items: ApprovalArt[] = arts.filter(a => a.quantity > 0).map(art => {
+      const size = getArtPrintSize(art, exportPackConfig)
+      return { name: art.approvalName?.trim() || approvalDisplayName(art.name), widthCm: size.widthCm, heightCm: size.heightCm, quantity: art.quantity,
+        color: art.color, source: art.trimmedCanvas, rotated: size.rotated }
+    })
+    const sizes = new Map<string, number>()
+    const n = (cm: number) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 }).format(cm)
+    for (const sheet of packed) {
+      const height = layoutConfig.sheetGrowMode === 'auto_height' ? sheet.usedHeightCm ?? sheet.heightPx * 2.54 / effectiveDpi : layoutConfig.heightCm
+      const label = `${n(layoutConfig.widthCm)} × ${n(height)} cm`; sizes.set(label, (sizes.get(label) ?? 0) + 1)
+    }
+    const sheetLabel = [...sizes].map(([size, count]) => `${count} folha(s) de ${size}`).join(' · ')
+    return { items, sheetLabel, order: { ...customerOrder, name: clientName } }
+  }
+
+  const createApproval = async (download: boolean): Promise<number> => {
+    if (approvalBusy) return 0
+    const version = approvalVersion.current
+    setApprovalBusy(true)
+    try {
+      setStatus('Gerando aprovação do cliente com medidas e quantidades conferidas…')
+      const data = customerData()
+      const blobs = await renderApprovalPages(data.items, data.order, data.sheetLabel, approvalOptions)
+      if (version !== approvalVersion.current) throw new Error('O pedido mudou durante a geração. Gere uma nova aprovação com os dados atuais.')
+      setApprovalUrls(blobs.map(blob => URL.createObjectURL(blob)))
+      if (download) for (const [i, blob] of blobs.entries()) {
+        const prefix = (customerOrder.orderId || clientName || 'pedido').replace(/[^\p{L}\p{N}_-]/gu, '_').slice(0, 60)
+        saveAs(blob, `${prefix}-aprovacao-r${approvalOptions.revision.replace(/[^a-zA-Z0-9_-]/g, '').slice(0,20) || '1'}-${String(i + 1).padStart(2, '0')}.jpg`)
+        if (blobs.length > 1) await new Promise(resolve => window.setTimeout(resolve, 300))
+      }
+      setStatus(`${blobs.length} imagem(ns) de aprovação ${download ? 'enviada(s) ao navegador' : 'gerada(s)'}. Os PNGs de impressão continuam separados.`)
+      return blobs.length
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'Falha ao gerar aprovação.'); return 0 }
+    finally { setApprovalBusy(false) }
+  }
+  const copyCustomerConfirmation = async () => {
+    try {
+      const data = customerData(), text = customerConfirmation(data.order, data.sheetLabel, data.items)
+      setConfirmation(text)
+      try { await navigator.clipboard.writeText(text); setStatus('Confirmação copiada. Cole na conversa com o cliente.') }
+      catch { setStatus('Confirmação gerada abaixo. Selecione e copie o texto.') }
+    } catch (error) { setStatus(error instanceof Error ? error.message : 'Falha ao gerar confirmação.') }
+  }
+  useEffect(() => () => approvalUrls.forEach(url => URL.revokeObjectURL(url)), [approvalUrls])
+  useEffect(() => { approvalVersion.current++; setApprovalUrls([]); setConfirmation('') }, [arts, config, clientName, customerOrder, approvalOptions])
+
   const exportPngs = async (targets: PackedSheet[]) => {
     setExporting(true)
     cancelExportRef.current = false
@@ -870,6 +929,10 @@ export default function App() {
         completed++
       }
       setStatus(`${completed}/${downloads.length} PNG(s) enviados ao navegador · ${effectiveDpi} DPI. ${downloads.length > 1 ? 'Se algum download for bloqueado, use os botões das partes abaixo.' : ''}`)
+      if (approvalWithPng && completed === downloads.length && !cancelExportRef.current) {
+        const proofs = await createApproval(true)
+        if (proofs) setStatus(`${completed} PNG(s) de impressão e ${proofs} imagem(ns) de aprovação enviados ao navegador.`)
+      }
     } catch (e) {
       setStatus(e instanceof Error ? e.message : 'Erro ao exportar PNG. Use os botões das partes para tentar novamente.')
     } finally {
@@ -1105,6 +1168,7 @@ export default function App() {
               {sheets.length === 1 && (exportPlans[0]?.length ?? 0) === 1 ? 'Baixar PNG' : 'Baixar PNGs'}
             </button>
           )}
+          {sheets.length > 0 && <button type="button" className="btn secondary sm" disabled={loading || exporting || preparing || approvalBusy || layoutPending} onClick={() => void createApproval(true)}>Baixar aprovação</button>}
         </div>
 
         {(status || loading || exporting) && (
@@ -1138,6 +1202,31 @@ export default function App() {
         <label className="field"><span>Lado padrão (cm)</span><input type="number" min={0.1} step={0.1} value={config.maxSideCm} onChange={e => updateConfig('maxSideCm', Math.max(.1, Number(e.target.value) || 5))} /></label>
         {exportQuality !== 'native' && <label className="field"><span>DPI do export</span><input type="number" min={72} step={1} value={config.dpi} onChange={e => updateConfig('dpi', Math.max(72, Number(e.target.value) || 300))} /></label>}
       </section>
+      <details className="card customer-panel" open={!!customerOrder.orderId}><summary>Pedido e aprovação do cliente</summary>
+        <p className="hint">Os dados do orçamento chegam aqui ao usar Continuar na montadora. Importe as artes na ordem indicada e revise os valores se mudar tamanhos ou quantidades. As cores abaixo são informações do pedido e não recolorem a imagem.</p>
+        {customerOrder.quotedSheet && !layoutPending && sheets.length > 0 && (sheets.length !== 1 || layoutConfig.widthCm !== customerOrder.quotedSheet.widthCm || layoutConfig.heightCm !== customerOrder.quotedSheet.heightCm || counts.requested !== customerOrder.quotedSheet.quantity) && <p className="cut-alert" role="status">O orçamento veio de uma folha de {customerOrder.quotedSheet.widthCm} × {customerOrder.quotedSheet.heightCm} cm, com {customerOrder.quotedSheet.quantity} peças. A montagem atual mudou: confira a quantidade de folhas e revise o valor do produto antes de enviar ao cliente.</p>}
+        <fieldset disabled={exporting || preparing || approvalBusy}><legend>Dados para enviar ao cliente</legend><div className="customer-fields">
+          <label className="field"><span>Cliente da aprovação</span><input value={clientName} maxLength={160} onChange={e => setClientName(e.target.value)} /></label>
+          <label className="field"><span>Número do pedido</span><input value={customerOrder.orderId} maxLength={60} onChange={e => setCustomerOrder(p => ({ ...p, orderId: e.target.value }))} /></label>
+          <label className="field"><span>Cor/acabamento geral</span><input value={customerOrder.color} maxLength={120} onChange={e => setCustomerOrder(p => ({ ...p, color: e.target.value }))} /></label>
+          <label className="field"><span>Valor do produto (R$)</span><input inputMode="decimal" value={customerOrder.price} onChange={e => setCustomerOrder(p => ({ ...p, price: e.target.value }))} /></label>
+          <label className="field"><span>Frete do pedido (R$)</span><input inputMode="decimal" value={customerOrder.freight} onChange={e => setCustomerOrder(p => ({ ...p, freight: e.target.value }))} /></label>
+          <label className="field"><span>Transportadora do pedido</span><input list="customer-carriers" value={customerOrder.carrier} maxLength={120} onChange={e => setCustomerOrder(p => ({ ...p, carrier: e.target.value }))} /><datalist id="customer-carriers">{['SEDEX','Correios','Correios/PAC','Loggi','J&T','Jadlog','LATAM Cargo','Motoboy','Retirada no local'].map(c => <option key={c} value={c} />)}</datalist></label>
+          <label className="field"><span>Produção do pedido</span><input value={customerOrder.production} maxLength={160} onChange={e => setCustomerOrder(p => ({ ...p, production: e.target.value }))} /></label>
+          <label className="field"><span>Entrega estimada do pedido</span><input value={customerOrder.delivery} maxLength={160} onChange={e => setCustomerOrder(p => ({ ...p, delivery: e.target.value }))} /></label>
+          <label className="field"><span>Revisão da aprovação</span><input value={approvalOptions.revision} maxLength={20} onChange={e => setApprovalOptions(p => ({ ...p, revision: e.target.value }))} /></label>
+          <label className="field"><span>Formato da aprovação</span><select value={approvalOptions.pages ? 'pages' : 'single'} onChange={e => setApprovalOptions(p => ({ ...p, pages: e.target.value === 'pages' }))}><option value="single">Uma imagem com todos os modelos</option><option value="pages">Páginas de 12 modelos</option></select></label>
+          <label className="field"><span>Fundo para visualizar as artes</span><select value={approvalOptions.backdrop} onChange={e => setApprovalOptions(p => ({ ...p, backdrop: e.target.value as ApprovalOptions['backdrop'] }))}><option value="auto">Automático por arte</option><option value="light">Claro</option><option value="dark">Escuro</option></select></label>
+        </div>
+        <label><input type="checkbox" checked={approvalWithPng} onChange={e => setApprovalWithPng(e.target.checked)} /> Baixar aprovação junto com os PNGs</label>
+        <div className="customer-actions">
+          <button type="button" className="btn secondary sm" disabled={!sheets.length || layoutPending} onClick={() => void createApproval(false)}>Ver aprovação</button>
+          <button type="button" className="btn secondary sm" disabled={!sheets.length || layoutPending} onClick={() => void createApproval(true)}>Baixar imagem de aprovação</button>
+          <button type="button" className="btn secondary sm" disabled={!sheets.length || layoutPending} onClick={() => void copyCustomerConfirmation()}>Copiar confirmação do pedido</button>
+        </div></fieldset>
+        {confirmation && <label className="field"><span>Confirmação pronta para copiar</span><textarea className="customer-confirmation" value={confirmation} readOnly /></label>}
+        {approvalUrls.map((url, i) => <a href={url} target="_blank" rel="noreferrer" key={url}><img className="approval-preview" src={url} alt={`Aprovação do cliente — página ${i + 1}`} /></a>)}
+      </details>
       <details className="advanced-settings"><summary>Opções de PDF e recorte</summary>
       <section className="card" aria-label="Importação de PDF">
         <label className="field"><span>Resolução ao importar PDF</span><select value={pdfImportDpi} onChange={(e) => setPdfImportDpi(Number(e.target.value))}><option value={300}>300 DPI</option><option value={600}>600 DPI (recomendado para detalhes pequenos)</option><option value={1200}>1200 DPI</option></select></label>
@@ -1408,6 +1497,8 @@ export default function App() {
                   <label className="aspect-control"><input type="checkbox" checked={art.lockAspect !== false} aria-label={`Manter proporção ${art.name}`}
                     onChange={e => { const locked = e.target.checked; setArts(prev => prev.map(a => a.id !== art.id ? a : locked ? resizeArt({ ...a, lockAspect: true }, 'width', ps.widthCm, config.maxSideCm) : { ...a, lockAspect: false })) }} /> Manter proporção</label>
                   {art.lockAspect === false && <p className="hint cut-alert">Proporção livre: medidas independentes podem deformar a arte.</p>}
+                  <label className="field"><span>Cor/acabamento</span><input value={art.color ?? ''} maxLength={120} aria-label={`Cor ${art.name}`} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, color: e.target.value } : a))} /></label>
+                  <label className="field"><span>Nome na aprovação (opcional)</span><input value={art.approvalName ?? ''} placeholder={approvalDisplayName(art.name)} maxLength={80} aria-label={`Nome na aprovação ${art.name}`} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, approvalName: e.target.value } : a))} /></label>
                   <details className="art-group"><summary>Pedido / grupo{art.groupName ? `: ${art.groupName}` : ' (opcional)'}</summary>
                     <label className="field"><span>Identificação do pedido</span><input value={art.groupName ?? ''} maxLength={80} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, groupName: e.target.value } : a))} aria-label={`Pedido ${art.name}`} /></label>
                   </details>

@@ -146,3 +146,18 @@ Todas as quatro opções iniciam **desligadas** e não usam API. Abra o painel c
 - **Conferir quantidades antes de baixar**: exibe o pedido e a quantidade montada por ID de modelo; com a opção ligada, uma divergência impede exportar folhas. Detecta modelos trocados mesmo quando o total é igual. Compara com a lista atual, incluindo alterações manuais e cópias extras pedidas; não lê quantidades dos nomes dos arquivos.
 
 Para limitar a memória, a preparação é aceita até 16 megapixels por arte. Uma falha mantém o estado anterior da arte e informa o problema. Desmarcar as opções e aplicar ou usar Restaurar recupera a imagem original com o recorte vigente.
+
+
+## DTF UV Mania: confirmação e aprovação do cliente
+
+O logo foi obtido do cabeçalho oficial de https://www.dtfuvmania.com.br/ em 26/10/2026 (arquivo original em `assets/dtfuvmania-logo.jpg`, URL de origem `https://images.tcdn.com.br/img/img_prod/1571477/1791756712_4c70d6cd37bb8b2f.jpg`). A identidade usa o rosa `#ff2eaa`, preto e branco do site, com ciano e amarelo do logo. O arquivo é local, sem hotlink na geração da aprovação.
+
+Na calculadora, Gerar orçamento conserva os modos anteriores e acrescenta Confirmação curta do pedido e o botão Copiar confirmação. A mensagem inclui número do pedido, nome, folha escolhida, modelos, medidas, quantidades, cores, produto, transportadora, frete, total e prazo. O cliente não é marcado como aprovado ou pago. O encaixe calculado continua identificado como estimativa pelas medidas. As novas opções de transporte incluem SEDEX, Correios/PAC, Loggi e J&T; o frete é informado manualmente.
+
+**Continuar na montadora** transfere a folha escolhida no orçamento (não necessariamente a selecionada na tela principal), cores e contagens de cada modelo, dados comerciais e cliente. As imagens devem ser importadas na ordem indicada. O link contém um identificador aleatório; nome e valores ficam em cache no mesmo navegador/origem, por até 24 horas. Não há servidor, conta, API, envio de imagens ou cotação de frete. Caches vencidos desse recurso são removidos na próxima transferência. Esse link interno não substitui o JPG para enviar ao cliente. Limites da transferência: 50 modelos, folha até 500 cm.
+
+Na montadora, o painel Pedido e aprovação do cliente permite revisar os dados. Uma alteração na quantidade/tamanho de folha ou número de folhas em relação à cotação exibe aviso para revisar o valor. Os valores não são recalculados pela montadora. Cor/acabamento é metadado, sem recolorir pixels. Há nome opcional para cada modelo na aprovação; o nome padrão retira extensão e o sufixo de cópia do arquivo.
+
+Baixar aprovação gera um JPG separado, com logo, nome, pedido, revisão, data de São Paulo, um exemplar por modelo ativo, medida proporcional, quantidade e cor. O rodapé informa folhas de montagem, total de peças, valores preenchidos e prazo de produção. A folha de impressão pode ter recorte de vazios independente; o tamanho de folha informado no comprovante é o da montagem. O fundo de cada arte pode ser claro, escuro ou automático (para visualizar branco). O comprovante é identificado como aprovação, sem alterar os PNGs de produção.
+
+Escolha uma imagem única ou páginas de 12 modelos. A imagem única tem limite de 16 megapixels e 16384 px de altura; excesso solicita paginação em vez de omitir modelos. A opção Baixar aprovação junto com os PNGs é desligada por padrão. A prévia é invalidada ao alterar pedido, artes, medidas, quantidades, cores ou revisão; geração que fica desatualizada não é baixada. Copiar confirmação do pedido usa a montagem real conferida, com produto/frete/prazo informados. Nenhuma mensagem é enviada automaticamente ao cliente.

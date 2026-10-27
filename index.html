@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DTF UV Studio</title>
+<title>DTF UV Mania | Calculadora e pedidos</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -150,20 +150,11 @@ a.bsm{display:inline-flex;align-items:center;justify-content:center;text-decorat
   .bsm{width:100%}
 }
 </style>
+<link rel="stylesheet" href="assets/brand.css">
 </head>
 <body>
-<header>
-  <div class="logo">
-    <svg viewBox="0 0 17 17" fill="none">
-      <rect x="1" y="1" width="6" height="6" rx="1.5" fill="#000"/>
-      <rect x="9" y="1" width="6" height="6" rx="1.5" fill="#000"/>
-      <rect x="1" y="9" width="6" height="6" rx="1.5" fill="#000"/>
-      <rect x="9" y="9" width="2.4" height="2.4" rx=".7" fill="#000"/>
-      <rect x="12.6" y="9" width="2.4" height="2.4" rx=".7" fill="#000"/>
-      <rect x="9" y="12.6" width="2.4" height="2.4" rx=".7" fill="#000"/>
-      <rect x="12.6" y="12.6" width="2.4" height="2.4" rx=".7" fill="#000"/>
-    </svg>
-  </div>
+<header class="brand-header">
+  <img class="brand-logo" src="assets/dtfuvmania-logo.jpg" alt="DTF UV Mania">
   <span class="htitle">DTF UV Studio</span><a href="montadora/" style="color:var(--accent);font-size:12px;margin-left:auto">Montadora de artes →</a>
   <span class="hbadge">v4.8</span>
 </header>
@@ -360,7 +351,7 @@ a.bsm{display:inline-flex;align-items:center;justify-content:center;text-decorat
 
 <script src="quote-core.js"></script>
 <script>
-const COLORS=['#d4ff00','#00e5a0','#ff6b2b','#4db8ff','#ff4d6a','#c084fc','#fbbf24','#34d399','#f472b6','#60a5fa'];
+const COLORS=['#ff2eaa','#26d9ee','#ffd600','#4db8ff','#ff4d6a','#c084fc','#fbbf24','#34d399','#f472b6','#60a5fa'];
 const FOLHAS_PAD=[
   {label:'29 x 21 cm',w:29,h:21,cost:39},
   {label:'29 x 42 cm',w:29,h:42,cost:49.90},
@@ -537,7 +528,7 @@ function montadoraHref(folha,esp,arts,placed){
   var counts={};placed.forEach(function(p){counts[p.idx]=(counts[p.idx]||0)+1;});
   var q=new URLSearchParams();
   q.set('origem','calculadora');q.set('w',String(folha.w));q.set('h',String(folha.h));q.set('esp',String(esp));
-  arts.forEach(function(a,i){if(counts[i]) q.append('arte',a.origW+'x'+a.origH+'x'+counts[i]);});
+  arts.forEach(function(a,i){if(counts[i]) { q.append('arte',a.origW+'x'+a.origH+'x'+counts[i]);q.append('cor',a.color==='não informado'?'':a.color||''); }});
   return 'montadora/?'+q.toString();
 }
 
@@ -932,7 +923,7 @@ function calcularNormal(){
     html='<thead><tr><th>Folha</th><th>Custo</th><th>Artes</th><th>Col x Lin</th><th>Aproveit.</th><th>Rotação</th>'+resaleHead(pricing)+'</tr></thead><tbody>';
     compData.forEach(function(d){
       var f=d.f,bf=d.bf,best=d.qty===maxComp&&maxComp>0;
-      quoteRows.push({id:f.id,label:f.label.replace('*',''),price:f.price,quantity:d.qty});
+      quoteRows.push({id:f.id,label:f.label.replace('*',''),price:f.price,quantity:d.qty,widthCm:f.w,heightCm:f.h,arts:arts.map(function(a){return {widthCm:a.origW,heightCm:a.origH,quantity:currentMode==='fill'?d.qty:(d.counts[a.idx]||0),color:a.color==='não informado'?'':a.color};})});
       html+='<tr><td style="color:var(--txt);font-weight:500">'+esc(f.label)+(best?'<span class="bbadge">MELHOR</span>':'')+'</td><td class="num">'+Quote.money(f.price)+'</td><td class="'+(best?'bst':'num')+'">'+bf.total+'</td><td class="num">'+bf.cols+' x '+bf.rows+'</td><td style="color:'+(best?'var(--accent)':'var(--t2)')+';font-weight:'+(best?700:400)+'">'+d.ap+'%</td><td style="color:'+(bf.rotated?'var(--green)':'var(--t3)')+'">'+(bf.rotated?'sim':'não')+'</td>'+resaleCells(f.price,d.qty,pricing)+'</tr>';
     });
   } else {
@@ -947,7 +938,7 @@ function calcularNormal(){
     html='<thead><tr><th>Folha</th><th>Custo</th><th>Pedido cabe?</th><th>Pedidos completos</th><th>Artes na folha</th><th>Aproveit.</th>'+resaleHead(pricing)+'</tr></thead><tbody>';
     compData.forEach(function(d){
       var f=d.f,best=d.qty===maxComp2&&maxComp2>0,ok=d.orderPlaced>=requested;
-      quoteRows.push({id:f.id,label:f.label.replace('*',''),price:f.price,quantity:d.qty});
+      quoteRows.push({id:f.id,label:f.label.replace('*',''),price:f.price,quantity:d.qty,widthCm:f.w,heightCm:f.h,arts:arts.map(function(a){return {widthCm:a.origW,heightCm:a.origH,quantity:currentMode==='fill'?d.qty:(d.counts[a.idx]||0),color:a.color==='não informado'?'':a.color};})});
       var mix=arts.map(function(a){return (d.counts[a.idx]||0)+'x '+a.origW+'x'+a.origH;}).join(' + ');
       html+='<tr><td style="color:var(--txt);font-weight:500">'+esc(f.label)+(best?'<span class="bbadge">MELHOR</span>':'')+'</td><td class="num">'+Quote.money(f.price)+'</td>'+
         '<td style="color:'+(ok?'var(--green)':'var(--red)')+';font-weight:600">'+(ok?'Sim':'Não')+' ('+d.orderPlaced+'/'+requested+')</td>'+
@@ -1033,7 +1024,7 @@ function calcularInverso(){
   FOLHAS_PAD.forEach(function(f){
     var pl2=packArts(toPlace.slice(),f.w,f.h,esp,useRot);
     var price=Quote.cents(String(f.cost));
-    quoteRows.push({id:String(f.h),label:f.label,price:price,quantity:pl2.length});
+    quoteRows.push({id:String(f.h),label:f.label,price:price,quantity:pl2.length,widthCm:f.w,heightCm:f.h,arts:arts.map(function(a){return {widthCm:a.origW,heightCm:a.origH,quantity:pl2.filter(function(p){return p.idx===a.idx;}).length,color:a.color==='não informado'?'':a.color};})});
     var ok=pl2.length>=toPlace.length;
     html2+='<tr><td style="color:var(--txt);font-weight:500">'+f.label+'</td><td class="num">'+Quote.money(price)+'</td>';
     html2+='<td style="color:'+(ok?'var(--green)':'var(--red)')+';font-weight:600">'+(ok?'Comporta tudo':'Não comporta')+'</td>';
@@ -1041,7 +1032,7 @@ function calcularInverso(){
     html2+='<td style="color:'+(ok?'var(--green)':'var(--t3)')+'">'+(ok?f.h+' cm (sobra '+(f.h-idealH).toFixed(1)+' cm)':'--')+'</td>'+resaleCells(price,pl2.length,pricing)+'</tr>';
   });
   var idealLabel='29 x '+idealH+' cm';
-  quoteRows.push({id:'custom',label:idealLabel+' (sob medida)',price:idealPrice.price,quantity:placed.length});
+  quoteRows.push({id:'custom',label:idealLabel+' (sob medida)',price:idealPrice.price,quantity:placed.length,widthCm:FW,heightCm:idealH,arts:arts.map(function(a){return {widthCm:a.origW,heightCm:a.origH,quantity:placed.filter(function(p){return p.idx===a.idx;}).length,color:a.color==='não informado'?'':a.color};})});
   html2+='<tr><td style="color:var(--txt);font-weight:500">'+idealLabel+' (sob medida)'+(idealPrice.estimated?'*':'')+'</td><td class="num">'+Quote.money(idealPrice.price)+'</td><td style="color:var(--green);font-weight:600">Comporta tudo</td><td class="num">'+placed.length+' / '+toPlace.length+'</td><td style="color:var(--t3)">sem sobra</td>'+resaleCells(idealPrice.price,placed.length,pricing)+'</tr>';
   html2+='</tbody>';
   document.getElementById('comp-table-inv').innerHTML=html2;

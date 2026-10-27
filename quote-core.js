@@ -18,13 +18,14 @@
     return d<0n||(d===0n&&(b.price<a.price||(b.price===a.price&&b.id.localeCompare(a.id)<0)))?b:a;
   },null);}
   function validate(rows,c){
-    if(!['full','short','formal'].includes(c.mode))throw Error('Modo inválido.');
+    if(!['full','short','formal','confirmation'].includes(c.mode))throw Error('Modo inválido.');
     const row=rows.find(r=>r.id===c.sheet);if(!row)throw Error('Selecione uma folha.');
     unit(row.price,row.quantity,c.freight);
     if(!c.carrier.trim())throw Error('Informe a transportadora.');
     if(!c.production.trim())throw Error('Informe o prazo de produção.');return row;
   }
   function generate(rows,c){
+    if(c.mode==='confirmation')return generateConfirmation(rows,c);
     const chosen=validate(rows,c),winner=best(rows);
     const lines=[c.name.trim()?`Olá, ${c.name.trim()}! 😊`:'Olá! 😊','',c.mode==='formal'?'Formalização do orçamento de adesivos DTF UV:':'Segue seu orçamento de adesivos DTF UV:',''];
     for(const r of c.mode==='full'?rows:[chosen]){
@@ -37,6 +38,23 @@
     lines.push('',`⏱️ Prazo de produção: ${c.production.trim()}`);
     for(const [key,label]of [['delivery','Prazo estimado de entrega'],['validity','Validade do orçamento'],['notes','Observações']])if(c[key]?.trim())lines.push(`${label}: ${c[key].trim()}`);
     lines.push('','As quantidades são estimativas de encaixe, considerando as medidas informadas.','Os valores unitários são arredondados; o total é calculado pelo valor da folha.','Qualquer dúvida, estamos à disposição!');return lines.join('\n');
+  }
+  function generateConfirmation(rows,c){
+    const chosen=validate(rows,c);
+    const lines=['*CONFIRMAÇÃO PARA CONFERÊNCIA — DTF UV MANIA*'];
+    if(c.orderId?.trim())lines.push('Pedido: '+c.orderId.trim());
+    if(c.name?.trim())lines.push('Cliente: '+c.name.trim());
+    lines.push('Folha: '+chosen.label,'Quantidade: '+chosen.quantity+' adesivos');
+    if(c.color?.trim())lines.push('Cor/acabamento geral: '+c.color.trim());
+    for(const [i,a]of (chosen.arts||[]).entries())if(a.quantity>0){
+      lines.push('• Modelo '+String(i+1).padStart(2,'0')+': '+a.widthCm+' × '+a.heightCm+' cm · '+a.quantity+' un. · '+(a.color||c.color||'cor não informada'));
+    }
+    lines.push('','Produto: '+money(chosen.price),'Frete: '+c.carrier.trim()+' — '+money(c.freight),'*Total: '+money(chosen.price+c.freight)+'*','Produção: '+c.production.trim());
+    if(c.delivery?.trim())lines.push('Entrega estimada: '+c.delivery.trim());
+    if(c.notes?.trim())lines.push('Observações: '+c.notes.trim());
+    if(c.estimated!==false)lines.push('','Encaixe estimado pelas medidas; conferir com as artes na montagem.');
+    lines.push('','Confira medidas, cores e quantidades. Podemos seguir?');
+    return lines.join('\n');
   }
   // Divisão BigInt não negativa com arredondamento half up.
   const roundDiv=(a,b)=>(a*2n+b)/(b*2n);
@@ -71,6 +89,8 @@
     return {...out,sale,revenue:Number(revenue),profit:Number(profit)};
   }
   function whatsapp(text){if(!text.trim())throw Error('Mensagem vazia.');return 'https://wa.me/?text='+encodeURIComponent(text);}
-  const api={cents,money,signedMoney,unit,best,validate,generate,whatsapp,tenths,lengthPrice,estimateLengthPrice,resale};
-  if(typeof module!=='undefined')module.exports=api;else root.Quote=api;
+  const api={cents,money,signedMoney,unit,best,validate,generate,generateConfirmation,whatsapp,tenths,lengthPrice,estimateLengthPrice,resale};
+  if(typeof module!=='undefined')module.exports=api;
+  // Bundlers may wrap this shared file as CommonJS even inside the browser.
+  if(typeof window!=='undefined')root.Quote=api;
 })(globalThis);

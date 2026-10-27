@@ -6,6 +6,7 @@ export interface CalcPrefillArt {
   widthCm: number
   heightCm: number
   quantity: number
+  color?: string
 }
 
 /** Folha calculada recebida pela URL (`montadora/?origem=calculadora&w=..&h=..&esp=..&arte=LxAxQ`). */
@@ -34,10 +35,11 @@ export function parseCalcPrefill(search: string): CalcPrefill | null {
   const heightCm = readNumber(q.get('h'))
   const esp = readNumber(q.get('esp'))
   if (widthCm == null || heightCm == null || widthCm <= 0 || heightCm <= 0 || widthCm > 500 || heightCm > MAX_AUTO_HEIGHT_CM) return null
-  const arts = q.getAll('arte').slice(0, MAX_PREFILL_ARTS).flatMap((raw) => {
+  const colors = q.getAll('cor')
+  const arts = q.getAll('arte').slice(0, MAX_PREFILL_ARTS).flatMap((raw, index) => {
     const m = ART_RE.exec(raw.trim())
     if (!m) return []
-    const art = { widthCm: Number(m[1]), heightCm: Number(m[2]), quantity: Number(m[3]) }
+    const art = { widthCm: Number(m[1]), heightCm: Number(m[2]), quantity: Number(m[3]), color: colors[index]?.slice(0, 120) }
     return art.widthCm > 0 && art.heightCm > 0 && art.quantity > 0 && art.quantity <= 100000 ? [art] : []
   })
   return {
@@ -60,5 +62,5 @@ export function fitArtToBox(art: ArtItem, box: CalcPrefillArt, defaultSide: numb
   if ((ratio >= 1) !== (bw >= bh)) [bw, bh] = [bh, bw]
   const axis: 'width' | 'height' = ratio >= bw / bh ? 'width' : 'height'
   const sized = resizeArt({ ...art, lockAspect: true, rotate90: false }, axis, axis === 'width' ? bw : bh, defaultSide)
-  return { ...sized, quantity: box.quantity }
+  return { ...sized, quantity: box.quantity, color: box.color }
 }

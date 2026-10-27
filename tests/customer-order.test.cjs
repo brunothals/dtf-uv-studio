@@ -1,0 +1,5 @@
+const {test}=require('node:test');const a=require('node:assert/strict');const Q=require('../quote-core');
+const row={id:'a',label:'29 × 42 cm',price:4990,quantity:7,arts:[{widthCm:6,heightCm:4,quantity:4,color:'Dourado'},{widthCm:3,heightCm:3,quantity:3,color:'Branco'}]};
+const c={mode:'confirmation',sheet:'a',name:'Maria',orderId:'DTF-001',carrier:'J&T',freight:1230,production:'2 dias úteis'};
+test('confirmação curta traz modelos, cores, frete e total em centavos',()=>{const t=Q.generate([row],c);a.match(t,/Maria/);a.match(t,/DTF-001/);a.match(t,/6 × 4 cm · 4 un. · Dourado/);a.match(t,/3 × 3 cm · 3 un. · Branco/);a.match(t,/J&T/);a.match(t,/62,20/);a.match(t,/estimado/);a.doesNotMatch(t,/aprovado|pago|undefined|NaN/i);});
+test('confirmação da montagem não afirma que é estimativa; valida frete e prazo',()=>{const t=Q.generateConfirmation([row],{...c,estimated:false});a.doesNotMatch(t,/estimado/);a.throws(()=>Q.generateConfirmation([row],{...c,freight:-1}));a.throws(()=>Q.generateConfirmation([row],{...c,production:''}));});
