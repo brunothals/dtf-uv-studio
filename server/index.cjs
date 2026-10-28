@@ -2,7 +2,7 @@ const http=require('node:http'),fs=require('node:fs'),fsp=require('node:fs/promi
 const {fork}=require('node:child_process');const {pipeline}=require('node:stream/promises');const Busboy=require('busboy');
 const root=path.resolve(__dirname,'..'),jobs=new Map(),attempts=new Map();let running=null;
 const password=process.env.APP_PASSWORD,port=Number(process.env.PORT||3001),ttl=3600000;
-if(!password||password.length<16)throw Error('Configure APP_PASSWORD com pelo menos 16 caracteres.');
+if(!password||password.length<8)throw Error('Configure APP_PASSWORD com pelo menos 8 caracteres.');
 const sessions=require('./session.cjs').sessionAuth(password);
 function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
 function authorized(req){const token=String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('dtf_session='))?.slice(12);return sessions.verify(token);}

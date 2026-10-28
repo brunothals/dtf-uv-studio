@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),{spawn}=require('node:child_process'),{once}=require('node:events');
 const {sessionAuth}=require('../server/session.cjs');
-const password='test-only-long-password',now=1793152000000;
+const password='Test150!',now=1793152000000;
 test('signed sessions survive a new verifier and reject expiry, tampering and changed passwords',()=>{
  const token=sessionAuth(password).create(now);
  assert(sessionAuth(password).verify(token,now+10000));
