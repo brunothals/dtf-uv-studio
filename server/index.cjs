@@ -1,10 +1,11 @@
 const http=require('node:http'),fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
 const {fork}=require('node:child_process');const {pipeline}=require('node:stream/promises');const Busboy=require('busboy');
-const root=path.resolve(__dirname,'..'),jobs=new Map(),sessions=new Map(),attempts=new Map();let running=null;
+const root=path.resolve(__dirname,'..'),jobs=new Map(),attempts=new Map();let running=null;
 const password=process.env.APP_PASSWORD,port=Number(process.env.PORT||3001),ttl=3600000;
 if(!password||password.length<16)throw Error('Configure APP_PASSWORD com pelo menos 16 caracteres.');
+const sessions=require('./session.cjs').sessionAuth(password);
 function json(res,status,data){res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));}
-function authorized(req){const token=String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('dtf_session='))?.slice(12);return sessions.get(token)>Date.now();}
+function authorized(req){const token=String(req.headers.cookie||'').split(';').map(v=>v.trim()).find(v=>v.startsWith('dtf_session='))?.slice(12);return sessions.verify(token);}
 function sameOrigin(req){const origin=req.headers.origin;return !origin||origin===`${req.headers['x-forwarded-proto']||'http'}://${req.headers.host}`;}
 function validate(m,assets){
  if(!m||![m.width,m.height,m.dpi].every(Number.isSafeInteger)||m.width<1||m.height<1||m.width>100000||m.height>100000||m.width*m.height>600000000||m.dpi<72||m.dpi>2400)throw Error('Limite: 600 milhões de pixels, lado até 100 mil pixels e 72–2400 DPI. Use folhas menores ou exportação em partes.');
@@ -44,7 +45,7 @@ const server=http.createServer(async(req,res)=>{try{
   let body='';for await(const b of req){body+=b;if(body.length>1024){json(res,413,{error:'Entrada inválida.'});return;}}
   const input=new URLSearchParams(body).get('password')||'';const hash=s=>crypto.createHash('sha256').update(s).digest();
   if(!crypto.timingSafeEqual(hash(input),hash(password))){res.writeHead(401,{'Content-Type':'text/html; charset=utf-8'});res.end(login+'<p>Senha incorreta.</p>');return;}
-  const token=crypto.randomBytes(32).toString('hex');sessions.set(token,Date.now()+7*86400000);res.writeHead(303,{'Set-Cookie':`dtf_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${process.env.NODE_ENV==='production'?'; Secure':''}`,'Location':'/montadora/'});res.end();return;
+  const token=sessions.create();res.writeHead(303,{'Cache-Control':'no-store','Set-Cookie':`dtf_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800${process.env.NODE_ENV==='production'?'; Secure':''}`,'Location':'/montadora/'});res.end();return;
  }
  if(!authorized(req)){if(url.pathname.startsWith('/api/'))json(res,401,{error:'Entre novamente no aplicativo.'});else{res.writeHead(302,{Location:'/login'});res.end();}return;}
  if(url.pathname==='/api/capabilities'){json(res,200,{cloudExport:true,freight:!!process.env.MELHOR_ENVIO_TOKEN,maxPixels:600000000});return;}
@@ -75,6 +76,6 @@ const server=http.createServer(async(req,res)=>{try{
  const types={'.html':'text/html; charset=utf-8','.js':'application/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.mjs':'application/javascript','.wasm':'application/wasm'};
  res.setHeader('Content-Type',types[path.extname(target)]||'application/octet-stream');res.setHeader('Cache-Control','no-cache');await pipeline(fs.createReadStream(target),res);
 }catch(e){if(!res.headersSent)json(res,e.code==='ENOENT'?404:400,{error:e.code==='ENOENT'?'Arquivo não encontrado.':e.message});else res.destroy();}});
-setInterval(()=>{for(const [id,j]of jobs)if(Date.now()-j.created>ttl&&!['rendering','uploading'].includes(j.status)){jobs.delete(id);fsp.rm(j.dir,{recursive:true,force:true}).catch(()=>{});}for(const [id,expires]of sessions)if(expires<Date.now())sessions.delete(id);for(const [id,a]of attempts)if(a.until<Date.now())attempts.delete(id);},60000).unref();
+setInterval(()=>{for(const [id,j]of jobs)if(Date.now()-j.created>ttl&&!['rendering','uploading'].includes(j.status)){jobs.delete(id);fsp.rm(j.dir,{recursive:true,force:true}).catch(()=>{});}for(const [id,a]of attempts)if(a.until<Date.now())attempts.delete(id);},60000).unref();
 if(require.main===module)server.listen(port,'0.0.0.0',()=>console.log('DTFUVStudio listening on '+port));
 module.exports={validate,server};
