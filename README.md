@@ -164,3 +164,24 @@ Escolha uma imagem única ou páginas de 12 modelos. A imagem única tem limite 
 
 
 O logo aplicado ao app e às aprovações agora usa `assets/dtfuvmania-logo-transparent.png`, versão editada com a ferramenta integrada de imagens para remover o fundo branco, preservando a identidade, os brancos internos e o rolo. O JPG original foi mantido como referência. Não há retângulo branco no cabeçalho da aprovação ou no CSS do logo. O PNG tem alpha real, e a renderização preserva a proporção da imagem.
+# Railway: exportação na nuvem
+
+O Dockerfile compila o mesmo aplicativo e serve calculadora + montadora com Node 24. `APP_PASSWORD` (mínimo 16 caracteres) protege todo o app; `/health` é público e não expõe dados. O GitHub Pages continua usando a exportação local. No Railway aparece a opção **Processar PNG → Na nuvem / No computador**.
+
+Na nuvem, apenas as fontes PNG ativas e a geometria são enviadas. A composição usa Sharp/libvips em um processo separado, um trabalho por vez (até três envios/trabalhos ativos), leitura em faixas e codificação PNG com alpha e pHYs no DPI solicitado. Não usa banco de dados. Fontes, resultados e arquivos intermediários ficam em diretório temporário e expiram após uma hora; reinicializações também podem interromper os trabalhos. Fontes redimensionadas são removidas ao terminar. Cancelar encerra a execução. Reiniciar o serviço exige novo login.
+
+Limites iniciais para o teste: 200 MB de upload total, 100 MB e 100 milhões de pixels por fonte, 100 modelos, 10 mil posicionamentos, 600 milhões de pixels por PNG, lado de até 100 mil pixels, 72–2400 DPI e 20 minutos por execução. Usar partes/páginas quando atingir o limite. A exportação continua proporcional à quantidade de pixels e não é instantânea. Somente o servidor faz a composição da folha; importação, preparação e encaixe continuam locais.
+
+Cada trabalho concluído registra duração, segundos de CPU, pico de memória do processo e bytes do PNG nos logs (sem nomes, CEPs ou dados de clientes). O consumo financeiro do Railway é medido no painel do serviço; essas métricas não representam uma cobrança calculada. O serviço de teste tem limite de 1 GB RAM/1 vCPU e modo de suspensão por inatividade. Isso não impõe teto monetário à conta.
+
+## Consulta opcional de frete
+
+O componente de consulta está na calculadora e na montadora. Selecionar uma opção preenche frete, transportadora e prazo para copiar com o orçamento. Não cria cadastro, venda, etiqueta ou cobrança no Melhor Envio e não persiste o CEP consultado. O CEP só é enviado à API quando se clica em consultar. O app não registra o corpo da requisição.
+
+Para ativar no servidor, configurar com segurança `MELHOR_ENVIO_TOKEN` (autorização válida com permissão de cotação), `FREIGHT_ORIGIN_ZIP` (8 dígitos) e `SUPPORT_EMAIL`. Nenhum segredo deve entrar no GitHub. Sem essas credenciais, o app informa que a consulta não está conectada, e o frete manual continua disponível. Informar medidas/peso reais da embalagem; não confundir com a folha aberta. A opção marcada adiciona um dia **somente quando o prazo retornado for exatamente um dia útil**, mantendo os demais e separando produção de transporte. Usa preços e prazos personalizados da API quando disponíveis. Não há compra de etiquetas implementada.
+
+## Aprovação e cadastro opcionais
+
+Trava proporcional restaura a relação original ao ser ativada, mantendo a largura atual; destravar permite largura/altura independentes. Cadastro de endereço/contato é opcional: campos vazios não aparecem na confirmação ou no JPG. Dados digitados ficam no formulário; a transferência voluntária calculadora → montadora mantém o mecanismo local de 24 horas já existente, sem dados na URL.
+
+O total folha + frete aparece em destaque no JPG e no texto. Comparação de capacidade é opcional: na calculadora usa as linhas efetivamente calculadas; na montadora calcula 29 × 21/42/50/100 com mesmo espaçamento, margem, medidas e proporção dos modelos, indicando estimativa, sem inventar preços. Não altera a quantidade solicitada.

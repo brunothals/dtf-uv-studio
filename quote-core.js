@@ -44,12 +44,14 @@
     const lines=['*CONFIRMAÇÃO PARA CONFERÊNCIA — DTF UV MANIA*'];
     if(c.orderId?.trim())lines.push('Pedido: '+c.orderId.trim());
     if(c.name?.trim())lines.push('Cliente: '+c.name.trim());
+    for(const [key,label]of [['phone','Telefone'],['document','CPF/CNPJ'],['zip','CEP'],['street','Rua'],['number','Número'],['complement','Complemento'],['district','Bairro'],['city','Cidade'],['state','Estado']])if(c[key]?.trim())lines.push(label+': '+c[key].trim());
     lines.push('Folha: '+chosen.label,'Quantidade: '+chosen.quantity+' adesivos');
     if(c.color?.trim())lines.push('Cor/acabamento geral: '+c.color.trim());
     for(const [i,a]of (chosen.arts||[]).entries())if(a.quantity>0){
       lines.push('• Modelo '+String(i+1).padStart(2,'0')+': '+a.widthCm+' × '+a.heightCm+' cm · '+a.quantity+' un. · '+(a.color||c.color||'cor não informada'));
     }
-    lines.push('','Produto: '+money(chosen.price),'Frete: '+c.carrier.trim()+' — '+money(c.freight),'*Total: '+money(chosen.price+c.freight)+'*','Produção: '+c.production.trim());
+    lines.push('','Produto: '+money(chosen.price),'Frete: '+c.carrier.trim()+' — '+money(c.freight),'','*TOTAL DO PEDIDO: '+money(chosen.price+c.freight)+'*','','Produção: '+c.production.trim());
+    if(c.compareSheets){lines.push('','OUTRAS OPÇÕES DE FOLHA (encaixe estimado):');for(const row of rows)if(row.id!==chosen.id&&row.quantity>0)lines.push('• '+row.label+': '+row.quantity+' unidades · '+money(row.price)+' · '+money(unit(row.price,row.quantity))+'/un. sem frete');}
     if(c.delivery?.trim())lines.push('Entrega estimada: '+c.delivery.trim());
     if(c.notes?.trim())lines.push('Observações: '+c.notes.trim());
     if(c.estimated!==false)lines.push('','Encaixe estimado pelas medidas; conferir com as artes na montagem.');
