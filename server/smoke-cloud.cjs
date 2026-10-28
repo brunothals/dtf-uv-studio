@@ -3,7 +3,7 @@ const {chromium}=require('@playwright/test'),sharp=require('sharp'),fs=require('
 (async()=>{
  const base=process.env.DTF_TEST_URL,output=process.env.DTF_TEST_OUTPUT;
  if(!base||!output||!process.env.DTF_PASSWORD_FILE)throw Error('Informe URL, diretório de saída e arquivo da senha via ambiente.');
- const password=(await fs.readFile(process.env.DTF_PASSWORD_FILE,'utf8')).trim().split(': ').at(-1);
+ const password=(await fs.readFile(process.env.DTF_PASSWORD_FILE,'utf8')).match(/Senha de acesso ao DTFUVStudio no Railway: ([a-f0-9]{48})/)?.[1];if(!password)throw Error('Senha não encontrada no arquivo de acesso.');
  const browser=await chromium.launch({headless:true});try{
   const page=await browser.newPage({viewport:{width:1280,height:900},acceptDownloads:true});page.setDefaultTimeout(60000);
   await page.goto(base+'/montadora/');await page.locator('[name=password]').fill(password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await page.waitForURL('**/montadora/');await page.getByLabel('Local de exportação').selectOption('cloud');
