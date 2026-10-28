@@ -20,6 +20,13 @@ test('cloud accepts clipped bands and rejects oversized/invalid manifests',()=>{
  assert.throws(()=>validate({...base,width:100000,height:100000},new Set(['asset0'])));
  assert.throws(()=>validate(base,new Set()));assert.throws(()=>validate({...base,dpi:NaN},new Set(['asset0'])));
 });
+test('multiple raster bands retain artwork across boundaries and transparent lower rows',async()=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'dtf-bands-'));try{
+  await sharp({create:{width:2,height:2,channels:4,background:'#ffffff'}}).png().toFile(path.join(dir,'asset0.png'));
+  await render(dir,{width:40,height:200,dpi:1200,placements:[{asset:'asset0',x:5,y:30,width:20,height:130,rotated:false}]});
+  const {data}=await sharp(path.join(dir,'result.png')).raw().toBuffer({resolveWithObject:true});for(const y of [30,63,64,127,128,159])assert.deepEqual(Array.from(data.subarray((y*40+5)*4,(y*40+5)*4+4)),[255,255,255,255]);assert.equal(data[(180*40+5)*4+3],0);
+ }finally{await fs.rm(dir,{recursive:true,force:true});}
+});
 test('API requires login, accepts export, downloads PNG, cancels and never serves server source',async()=>{
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
  try{

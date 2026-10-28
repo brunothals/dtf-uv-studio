@@ -263,6 +263,8 @@ export default function App() {
   const [confirmation, setConfirmation] = useState('')
   const [cloudAvailable, setCloudAvailable] = useState(false)
   const [cloudExport, setCloudExport] = useState(false)
+  const [cloudReport,setCloudReport]=useState('')
+  const cloudProgress=(text: string)=>{setStatus(text);if(text.startsWith('Pronto em'))setCloudReport(text)}
   const [includeComparison,setIncludeComparison]=useState(false)
   const freightHost = useRef<HTMLDivElement>(null)
   useEffect(() => { fetch('/api/capabilities').then(r => r.ok ? r.json() : null).then(data => { if(data?.cloudExport){setCloudAvailable(true);setCloudExport(true)} }).catch(() => {}) }, [])
@@ -940,7 +942,7 @@ export default function App() {
       for (const item of downloads) {
         if (cancelExportRef.current) break
         setStatus(`Gerando PNG ${completed + 1}/${downloads.length} · ${effectiveDpi} DPI…`)
-        if(cloudExport) await downloadCloudPng(item, setStatus, () => cancelExportRef.current)
+        if(cloudExport) await downloadCloudPng(item, cloudProgress, () => cancelExportRef.current)
         else await downloadPngPart(item)
         completed++
       }
@@ -974,7 +976,7 @@ export default function App() {
     try {
       setStatus(`Gerando ${item.filename}…`)
       cancelExportRef.current=false
-      if(cloudExport) await downloadCloudPng(item, setStatus, () => cancelExportRef.current)
+      if(cloudExport) await downloadCloudPng(item, cloudProgress, () => cancelExportRef.current)
       else await downloadPngPart(item)
       setStatus(`${item.filename} enviado ao navegador.`)
     } catch (e) { setStatus(e instanceof Error ? e.message : 'Erro ao exportar parte.') }
@@ -1152,7 +1154,7 @@ export default function App() {
           ~{exportSizeEstimate.w}×{exportSizeEstimate.h} px · {effectiveDpi} DPI
         </span>
 
-        {cloudAvailable && <label className="folha-tb-field"><span>Processar PNG</span><select aria-label="Local de exportação" disabled={exporting} value={cloudExport ? 'cloud' : 'local'} onChange={e=>setCloudExport(e.target.value==='cloud')}><option value="cloud">Na nuvem (Railway)</option><option value="local">No computador (atual)</option></select></label>}
+        {cloudAvailable && <label className="folha-tb-field"><span>Processar PNG</span><select className="folha-tb-select" aria-label="Local de exportação" disabled={exporting} value={cloudExport ? 'cloud' : 'local'} onChange={e=>setCloudExport(e.target.value==='cloud')}><option value="cloud">Na nuvem (Railway)</option><option value="local">No computador (atual)</option></select></label>}
         <label className="folha-tb-field"><span>Download PNG</span>
           <select className="folha-tb-select" aria-label="Formato do download PNG" value={pngOutputMode}
             disabled={exporting} onChange={e => setPngOutputMode(e.target.value as typeof pngOutputMode)}>
@@ -1195,6 +1197,7 @@ export default function App() {
             {loading && !status ? 'Aguarde…' : status}
           </p>
         )}
+        {cloudReport && <p className="hint">Último PNG na nuvem: {cloudReport}</p>}
 
         <input
           ref={fileInputRef}
