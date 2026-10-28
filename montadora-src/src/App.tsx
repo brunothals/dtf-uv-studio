@@ -33,6 +33,9 @@ import {
 import { isPdfFile, loadPdfAsCanvases } from './utils/pdfImport'
 import { cmToPx, computeNativeExportDpi, resolveExportDpi, roundPx } from './utils/units'
 import { resizeArt } from './utils/artEditing'
+import { downloadCloudPng } from './utils/cloudExport'
+import { compareSheets } from './utils/sheetComparison'
+import '../../assets/freight.js'
 import { prepareArt } from './utils/prepareArt'
 import { auditQuantities, sourceResolutionDpi } from './utils/preflight'
 import { readCustomerOrder, customerConfirmation, type CustomerOrder } from './utils/customerOrder'
@@ -258,6 +261,20 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false)
   const [approvalUrls, setApprovalUrls] = useState<string[]>([])
   const [confirmation, setConfirmation] = useState('')
+  const [cloudAvailable, setCloudAvailable] = useState(false)
+  const [cloudExport, setCloudExport] = useState(false)
+  const [cloudReport,setCloudReport]=useState('')
+  const cloudProgress=(text: string)=>{setStatus(text);if(text.startsWith('Pronto em'))setCloudReport(text)}
+  const [includeComparison,setIncludeComparison]=useState(false)
+  const freightHost = useRef<HTMLDivElement>(null)
+  useEffect(() => { fetch('/api/capabilities').then(r => r.ok ? r.json() : null).then(data => { if(data?.cloudExport){setCloudAvailable(true);setCloudExport(true)} }).catch(() => {}) }, [])
+  useEffect(() => {
+    const host=freightHost.current;if(!host)return
+    const widget=document.createElement('dtf-freight');host.append(widget)
+    const selected=(event: Event)=>{const o=(event as CustomEvent).detail;setCustomerOrder(p=>({...p,freight:o.price.toFixed(2).replace('.',','),carrier:o.carrier+' '+o.service,delivery:o.days+' dia(s) úteis após a postagem'}))}
+    widget.addEventListener('freight-selected',selected)
+    return()=>{widget.removeEventListener('freight-selected',selected);widget.remove()}
+  }, [])
   const approvalVersion = useRef(0)
   const cancelExportRef = useRef(false)
   const [previewBackground, setPreviewBackground] = useState('dark')
@@ -881,7 +898,7 @@ export default function App() {
       const label = `${n(layoutConfig.widthCm)} × ${n(height)} cm`; sizes.set(label, (sizes.get(label) ?? 0) + 1)
     }
     const sheetLabel = [...sizes].map(([size, count]) => `${count} folha(s) de ${size}`).join(' · ')
-    return { items, sheetLabel, order: { ...customerOrder, name: clientName } }
+    return { items, sheetLabel, order: { ...customerOrder, name: clientName, comparisonLines: includeComparison ? compareSheets(arts,config) : [] } }
   }
 
   const createApproval = async (download: boolean): Promise<number> => {
@@ -913,7 +930,7 @@ export default function App() {
     } catch (error) { setStatus(error instanceof Error ? error.message : 'Falha ao gerar confirmação.') }
   }
   useEffect(() => () => approvalUrls.forEach(url => URL.revokeObjectURL(url)), [approvalUrls])
-  useEffect(() => { approvalVersion.current++; setApprovalUrls([]); setConfirmation('') }, [arts, config, clientName, customerOrder, approvalOptions])
+  useEffect(() => { approvalVersion.current++; setApprovalUrls([]); setConfirmation('') }, [arts, config, clientName, customerOrder, approvalOptions,includeComparison])
 
   const exportPngs = async (targets: PackedSheet[]) => {
     setExporting(true)
@@ -925,7 +942,8 @@ export default function App() {
       for (const item of downloads) {
         if (cancelExportRef.current) break
         setStatus(`Gerando PNG ${completed + 1}/${downloads.length} · ${effectiveDpi} DPI…`)
-        await downloadPngPart(item)
+        if(cloudExport) await downloadCloudPng(item, cloudProgress, () => cancelExportRef.current)
+        else await downloadPngPart(item)
         completed++
       }
       setStatus(`${completed}/${downloads.length} PNG(s) enviados ao navegador · ${effectiveDpi} DPI. ${downloads.length > 1 ? 'Se algum download for bloqueado, use os botões das partes abaixo.' : ''}`)
@@ -957,7 +975,9 @@ export default function App() {
     setExporting(true)
     try {
       setStatus(`Gerando ${item.filename}…`)
-      await downloadPngPart(item)
+      cancelExportRef.current=false
+      if(cloudExport) await downloadCloudPng(item, cloudProgress, () => cancelExportRef.current)
+      else await downloadPngPart(item)
       setStatus(`${item.filename} enviado ao navegador.`)
     } catch (e) { setStatus(e instanceof Error ? e.message : 'Erro ao exportar parte.') }
     finally { setExporting(false) }
@@ -1134,6 +1154,7 @@ export default function App() {
           ~{exportSizeEstimate.w}×{exportSizeEstimate.h} px · {effectiveDpi} DPI
         </span>
 
+        {cloudAvailable && <label className="folha-tb-field"><span>Processar PNG</span><select className="folha-tb-select" aria-label="Local de exportação" disabled={exporting} value={cloudExport ? 'cloud' : 'local'} onChange={e=>setCloudExport(e.target.value==='cloud')}><option value="cloud">Na nuvem (Railway)</option><option value="local">No computador (atual)</option></select></label>}
         <label className="folha-tb-field"><span>Download PNG</span>
           <select className="folha-tb-select" aria-label="Formato do download PNG" value={pngOutputMode}
             disabled={exporting} onChange={e => setPngOutputMode(e.target.value as typeof pngOutputMode)}>
@@ -1176,6 +1197,7 @@ export default function App() {
             {loading && !status ? 'Aguarde…' : status}
           </p>
         )}
+        {cloudReport && <p className="hint">Último PNG na nuvem: {cloudReport}</p>}
 
         <input
           ref={fileInputRef}
@@ -1208,6 +1230,7 @@ export default function App() {
         <fieldset disabled={exporting || preparing || approvalBusy}><legend>Dados para enviar ao cliente</legend><div className="customer-fields">
           <label className="field"><span>Cliente da aprovação</span><input value={clientName} maxLength={160} onChange={e => setClientName(e.target.value)} /></label>
           <label className="field"><span>Número do pedido</span><input value={customerOrder.orderId} maxLength={60} onChange={e => setCustomerOrder(p => ({ ...p, orderId: e.target.value }))} /></label>
+          {(['phone','document','zip','street','number','complement','district','city','state'] as const).map((key,i)=><label className="field" key={key}><span>{['Telefone (opcional)','CPF/CNPJ (opcional)','CEP (opcional)','Rua (opcional)','Número (opcional)','Complemento (opcional)','Bairro (opcional)','Cidade (opcional)','Estado (opcional)'][i]}</span><input maxLength={160} value={customerOrder[key] || ''} onChange={e=>setCustomerOrder(p=>({...p,[key]:e.target.value}))} /></label>)}
           <label className="field"><span>Cor/acabamento geral</span><input value={customerOrder.color} maxLength={120} onChange={e => setCustomerOrder(p => ({ ...p, color: e.target.value }))} /></label>
           <label className="field"><span>Valor do produto (R$)</span><input inputMode="decimal" value={customerOrder.price} onChange={e => setCustomerOrder(p => ({ ...p, price: e.target.value }))} /></label>
           <label className="field"><span>Frete do pedido (R$)</span><input inputMode="decimal" value={customerOrder.freight} onChange={e => setCustomerOrder(p => ({ ...p, freight: e.target.value }))} /></label>
@@ -1224,6 +1247,8 @@ export default function App() {
           <button type="button" className="btn secondary sm" disabled={!sheets.length || layoutPending} onClick={() => void createApproval(true)}>Baixar imagem de aprovação</button>
           <button type="button" className="btn secondary sm" disabled={!sheets.length || layoutPending} onClick={() => void copyCustomerConfirmation()}>Copiar confirmação do pedido</button>
         </div></fieldset>
+        <label><input type="checkbox" checked={includeComparison} onChange={e=>setIncludeComparison(e.target.checked)} /> Incluir comparação de capacidade: 29 × 21, 42, 50 e 100 cm (mesmo espaçamento e proporção dos modelos)</label>
+        <div ref={freightHost} />
         {confirmation && <label className="field"><span>Confirmação pronta para copiar</span><textarea className="customer-confirmation" value={confirmation} readOnly /></label>}
         {approvalUrls.map((url, i) => <a href={url} target="_blank" rel="noreferrer" key={url}><img className="approval-preview" src={url} alt={`Aprovação do cliente — página ${i + 1}`} /></a>)}
       </details>
@@ -1495,7 +1520,7 @@ export default function App() {
                     <label className="field"><span>Quantidade</span><input type="number" min={0} step={1} value={art.quantity} onChange={e => setQty(art.id, Number(e.target.value))} aria-label={`Quantidade ${art.name}`} /></label>
                   </div>
                   <label className="aspect-control"><input type="checkbox" checked={art.lockAspect !== false} aria-label={`Manter proporção ${art.name}`}
-                    onChange={e => { const locked = e.target.checked; setArts(prev => prev.map(a => a.id !== art.id ? a : locked ? resizeArt({ ...a, lockAspect: true }, 'width', ps.widthCm, config.maxSideCm) : { ...a, lockAspect: false })) }} /> Manter proporção</label>
+                    onChange={e => { const locked = e.target.checked; setArts(prev => prev.map(a => a.id !== art.id ? a : locked ? resizeArt({ ...a, lockAspect: true }, 'width', ps.widthCm, config.maxSideCm) : { ...a, lockAspect: false })) }} /> {art.lockAspect !== false ? '🔒 Proporcional — destravar para medidas livres' : '🔓 Desproporcional — travar para restaurar proporção'}</label>
                   {art.lockAspect === false && <p className="hint cut-alert">Proporção livre: medidas independentes podem deformar a arte.</p>}
                   <label className="field"><span>Cor/acabamento</span><input value={art.color ?? ''} maxLength={120} aria-label={`Cor ${art.name}`} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, color: e.target.value } : a))} /></label>
                   <label className="field"><span>Nome na aprovação (opcional)</span><input value={art.approvalName ?? ''} placeholder={approvalDisplayName(art.name)} maxLength={80} aria-label={`Nome na aprovação ${art.name}`} onChange={e => setArts(prev => prev.map(a => a.id === art.id ? { ...a, approvalName: e.target.value } : a))} /></label>

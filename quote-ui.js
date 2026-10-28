@@ -5,6 +5,7 @@ dialog.innerHTML=`<h2 id="quote-title">Gerar orçamento</h2><button id="quote-cl
 <label>Modo<select name="mode"><option value="full">Comparativo completo</option><option value="short">Orçamento resumido</option><option value="formal">Formalização</option><option value="confirmation">Confirmação curta do pedido</option></select></label>
 <label>Nome do cliente (opcional)<input name="name" autocomplete="off"></label>
 <label>Número do pedido<input name="orderId" maxlength="60"></label>
+${[['phone','Telefone'],['document','CPF/CNPJ'],['zip','CEP'],['street','Rua'],['number','Número'],['complement','Complemento'],['district','Bairro'],['city','Cidade'],['state','Estado']].map(([key,label])=>`<label>${label} (opcional)<input name="${key}" maxlength="160" autocomplete="off"></label>`).join('')}
 <label>Cor/acabamento geral (opcional)<input name="color" maxlength="120" placeholder="Ex.: dourado, branco, colorido"></label>
 <label>Folha<select name="sheet"></select></label>
 <label>Transportadora<select name="carrier">${['Jadlog','LATAM Cargo','Correios','SEDEX','Correios/PAC','Loggi','J&T','Motoboy','Retirada no local','Outra'].map(s=>`<option>${s}</option>`).join('')}</select></label>
@@ -14,20 +15,28 @@ dialog.innerHTML=`<h2 id="quote-title">Gerar orçamento</h2><button id="quote-cl
 <label>Prazo estimado de entrega (opcional)<input name="delivery"></label>
 <label>Validade do orçamento (opcional)<input name="validity"></label>
 <label>Observações adicionais (opcional)<textarea name="notes"></textarea></label>
-</div><label><input type="checkbox" name="distributed"> Mostrar preço unitário com frete distribuído</label></form>
+</div><label><input type="checkbox" name="distributed"> Mostrar preço unitário com frete distribuído</label><label><input type="checkbox" name="compareSheets" checked> Incluir outras folhas na confirmação</label></form><dtf-freight></dtf-freight>
 <strong id="quote-total" aria-live="polite"></strong><p id="quote-error" role="alert"></p>
 <p>2. Prévia da mensagem</p><label for="quote-preview">Mensagem editável (alterar campos acima gera uma nova prévia)</label><textarea id="quote-preview" rows="18"></textarea>
 <p>3. Copiar e compartilhar</p><div class="quote-actions"><button class="bcalc" id="quote-copy">Copiar orçamento</button><button class="bcalc" id="quote-confirm">Copiar confirmação</button><button class="bcalc" id="quote-mount">Continuar na montadora</button><button class="bcalc" id="quote-share">Enviar pelo WhatsApp</button></div><p id="quote-status" role="status"></p>`;
 document.body.append(dialog);
+dialog.addEventListener('freight-selected',event=>{const o=event.detail;field('carrier').value='Outra';field('customCarrier').value=o.carrier+' '+o.service;field('freight').value=o.price.toFixed(2).replace('.',',');field('delivery').value=o.days+' dia(s) úteis após a postagem';refreshQuote();});
 const style=document.createElement('style');style.textContent=`#quote-dialog{color:var(--txt);background:var(--s1);border:1px solid var(--b2);border-radius:14px;padding:24px;width:min(940px,96vw);max-height:92dvh;overflow:auto;margin:auto}#quote-dialog::backdrop{background:#000b}#quote-dialog [hidden]{display:none!important}#quote-dialog h2{margin-bottom:12px}#quote-dialog p{margin:16px 0 10px}.quote-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}#quote-dialog label{color:#bcbcbc}#quote-dialog input[type=checkbox]{width:18px;height:18px;appearance:auto;vertical-align:middle}#quote-total{display:block;color:var(--accent);font-size:22px;margin-top:16px}#quote-error{color:#ff8396}#quote-preview{min-height:320px}.quote-actions{display:flex;gap:12px}.quote-actions button{padding:8px;height:auto;min-height:48px}@media(max-width:580px){.quote-grid{grid-template-columns:1fr}.quote-actions{flex-direction:column}#quote-dialog{padding:16px}}`;document.head.append(style);
 const form=document.getElementById('quote-form'),preview=document.getElementById('quote-preview');
+// The direct copy action now includes the same calculated options shown in the table.
+copiarResumo=function(){
+ if(!lastResult||!quoteRows.length){showToast('Calcule novamente antes de copiar.');return;}
+ const lines=[buildResumo(),'','OPÇÕES DE FOLHA — ENCAIXE ESTIMADO'];
+ for(const row of quoteRows){lines.push(row.label+': '+row.quantity+' unidades · '+Quote.money(row.price));for(const [i,art]of row.arts.entries())if(art.quantity>0)lines.push('  Modelo '+(i+1)+': '+art.widthCm+' × '+art.heightCm+' cm — '+art.quantity+' un.');}
+ copyText(lines.join('\n'));
+};
 let activeRows=[],config,valid=false;
 function field(n){return form.elements.namedItem(n);}
 function refreshQuote(){
   valid=false;document.getElementById('custom-carrier-label').hidden=field('carrier').value!=='Outra';
   try{
     config=Object.fromEntries(new FormData(form));config.carrier=config.carrier==='Outra'?config.customCarrier:config.carrier;
-    config.freight=Quote.cents(config.freight);config.distributed=field('distributed').checked;
+    config.freight=Quote.cents(config.freight);config.distributed=field('distributed').checked;config.compareSheets=field('compareSheets').checked;
     const row=Quote.validate(activeRows,config);preview.value=Quote.generate(activeRows,config);
     document.getElementById('quote-total').textContent='Total com frete: '+Quote.money(row.price+config.freight);
     document.getElementById('quote-error').textContent='';valid=true;
@@ -42,6 +51,7 @@ function openQuote(){
   field('sheet').replaceChildren(...activeRows.map(r=>{const o=new Option(`${r.label} — ${r.quantity} adesivos`,r.id);o.disabled=r.quantity<=0;return o;}));
   field('sheet').value=Quote.best(activeRows)?.id||'';
   field('name').value=getOrderMeta().client||'';field('delivery').value='';field('validity').value='';field('notes').value='';field('customCarrier').value='';field('color').value='';
+  for(const key of ['phone','document','zip','street','number','complement','district','city','state'])field(key).value='';
   field('orderId').value='DTF-'+new Date().toLocaleDateString('sv-SE').replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,6).toUpperCase();
   try{const p=JSON.parse(localStorage.getItem('dtf-quote-preferences')||'{}');if([...field('carrier').options].some(o=>o.value===p.carrier))field('carrier').value=p.carrier;if(typeof p.production==='string')field('production').value=p.production;}catch{}
   refreshQuote();dialog.showModal();
@@ -64,6 +74,7 @@ document.getElementById('quote-mount').onclick=()=>{
   try{
     const row=Quote.validate(activeRows,config),token=crypto.randomUUID();
     const payload={version:1,createdAt:Date.now(),name:config.name||'',orderId:config.orderId||'',color:config.color||'',price:row.price,freight:config.freight,carrier:config.carrier,production:config.production,delivery:config.delivery||'',notes:config.notes||'',widthCm:row.widthCm,heightCm:row.heightCm,arts:row.arts||[]};
+    for(const key of ['phone','document','zip','street','number','complement','district','city','state'])payload[key]=config[key]||'';
     if(payload.arts.filter(a=>a.quantity>0).length>50)throw Error('Transfira até 50 modelos por vez para a montadora.');
     if(!(row.widthCm>0&&row.widthCm<=500&&row.heightCm>0&&row.heightCm<=500))throw Error('A transferência aceita folhas de até 500 cm. Confira as medidas na montadora.');
     const q=new URLSearchParams({origem:'calculadora',w:String(row.widthCm),h:String(row.heightCm),esp:String(lastResult.esp),pedido:token});

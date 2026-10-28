@@ -53,8 +53,10 @@ export async function renderApprovalPages(arts: ApprovalArt[], order: CustomerOr
   const batches = Array.from({ length: Math.ceil(active.length / perPage) }, (_, i) => active.slice(i * perPage, (i + 1) * perPage))
   const logo = await loadLogo(), blobs: Blob[] = []
   const date = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date())
+  const registration=([['phone','Telefone'],['document','CPF/CNPJ'],['zip','CEP'],['street','Rua'],['number','Número'],['complement','Complemento'],['district','Bairro'],['city','Cidade'],['state','Estado']] as const).filter(([key])=>order[key]?.trim()).map(([key,label])=>label+': '+order[key]!.trim())
+  const registrationRows=Math.ceil(registration.length/2), comparisons=order.comparisonLines||[]
   for (const [page, items] of batches.entries()) {
-    const width = 1600, bodyY = 340, cardH = 250, footerY = bodyY + Math.ceil(items.length / 2) * cardH, height = footerY + 310
+    const width = 1600, bodyY = 340+registrationRows*32, cardH = 250, footerY = bodyY + Math.ceil(items.length / 2) * cardH, footerH=310+(comparisons.length?50+comparisons.length*32:0), height = footerY + footerH
     if (height > 16384 || width * height > 16 * 1024 * 1024) throw new Error('Muitos modelos para uma única imagem legível. Selecione Páginas de 12 modelos.')
     const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height
     const ctx = canvas.getContext('2d')
@@ -74,6 +76,7 @@ export async function renderApprovalPages(arts: ApprovalArt[], order: CustomerOr
       ctx.fillStyle = BRAND.ink; ctx.font = 'bold 28px Arial'; fitText(ctx, order.name ? 'Cliente: ' + order.name : 'Conferência das artes', 56, 258, 980)
       ctx.font = '22px Arial'; fitText(ctx, 'Pedido: ' + (order.orderId || 'sem número') + '  ·  Revisão ' + (options.revision || '1'), 56, 298, 1120)
       ctx.fillStyle = '#55515f'; ctx.font = '20px Arial'; ctx.fillText(date + `  ·  ${page + 1}/${batches.length}`, 1300, 296)
+      registration.forEach((line,i)=>fitText(ctx,line,56+(i%2)*766,335+Math.floor(i/2)*32,720))
       for (const [i, art] of items.entries()) {
         const x = 48 + (i % 2) * 766, y = bodyY + Math.floor(i / 2) * cardH
         ctx.fillStyle = '#fff'; ctx.fillRect(x, y, 738, 226)
@@ -96,15 +99,17 @@ export async function renderApprovalPages(arts: ApprovalArt[], order: CustomerOr
         ctx.font = '21px Arial'; ctx.fillStyle = '#62586c'
         fitText(ctx, 'Cor: ' + (art.color || order.color || 'não informada'), x + 250, y + 175, 460)
       }
-      ctx.fillStyle = BRAND.ink; ctx.fillRect(0, footerY, width, 310)
+      ctx.fillStyle = BRAND.ink; ctx.fillRect(0, footerY, width, footerH)
       ctx.fillStyle = '#fff'; ctx.font = 'bold 25px Arial'; fitText(ctx, sheetLabel, 56, footerY + 46, 1480)
       ctx.font = '23px Arial'; ctx.fillText(`Pedido completo: ${active.length} modelo(s) · ${active.reduce((n, a) => n + a.quantity, 0)} peças`, 56, footerY + 88)
       ctx.fillStyle = '#dddbe5'; ctx.font = '22px Arial'
-      const amounts = [price == null ? '' : 'Produto: ' + moneyText(price), freight == null ? '' : 'Frete: ' + (order.carrier || 'a definir') + ' — ' + moneyText(freight), price != null && freight != null ? 'Total: ' + moneyText(price + freight) : ''].filter(Boolean).join('  |  ')
-      fitText(ctx, amounts, 56, footerY + 131, 1480)
-      fitText(ctx, order.production ? 'Produção: ' + order.production : 'Confira medidas, quantidades e cores antes de aprovar.', 56, footerY + 172, 1480)
-      ctx.fillStyle = BRAND.yellow; ctx.font = 'bold 23px Arial'; ctx.fillText('Confira os modelos e responda se podemos seguir com a produção.', 56, footerY + 222)
+      const amounts = [price == null ? '' : 'Produto: ' + moneyText(price), freight == null ? '' : 'Frete: ' + (order.carrier || 'a definir') + ' — ' + moneyText(freight)].filter(Boolean).join('  |  ')
+      fitText(ctx, amounts, 56, footerY + 126, 1480)
+      if(price!=null&&freight!=null){ctx.fillStyle=BRAND.yellow;ctx.font='bold 44px Arial';fitText(ctx,'TOTAL DO PEDIDO: '+moneyText(price+freight),56,footerY+180,1480)}
+      ctx.font='21px Arial';ctx.fillStyle='#dddbe5';fitText(ctx,[order.production?'Produção: '+order.production:'',order.delivery?'Transporte: '+order.delivery:''].filter(Boolean).join(' · '),56,footerY+218,1480)
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 20px Arial'; ctx.fillText('Confira os modelos e responda se podemos seguir com a produção.', 56, footerY + 248)
       ctx.fillStyle = BRAND.pink; ctx.font = 'bold 18px Arial'; ctx.fillText('IMAGEM PARA APROVAÇÃO  ·  NÃO USAR COMO ARQUIVO DE IMPRESSÃO', 56, footerY + 270)
+      if(comparisons.length){ctx.fillStyle=BRAND.cyan;ctx.font='bold 23px Arial';ctx.fillText('OUTRAS FOLHAS — CAPACIDADE ESTIMADA',56,footerY+320);ctx.fillStyle='#fff';ctx.font='22px Arial';comparisons.forEach((line,i)=>fitText(ctx,line,56,footerY+355+i*32,1480))}
       blobs.push(await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Falha ao gerar imagem de aprovação.')), 'image/jpeg', .94)))
     } finally { canvas.width = 0; canvas.height = 0 }
   }

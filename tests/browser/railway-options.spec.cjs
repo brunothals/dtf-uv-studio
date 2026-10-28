@@ -1,0 +1,17 @@
+const {test,expect}=require('@playwright/test');
+test('copy summary uses exact comparison rows and optional registration stays out when blank',async({page,context})=>{
+ await context.grantPermissions(['clipboard-read','clipboard-write']);await page.goto('/');await page.locator('#btn-calc').click();const rows=await page.evaluate(()=>quoteRows);
+ await page.getByRole('button',{name:'Copiar resumo',exact:true}).filter({visible:true}).click();const text=await page.evaluate(()=>navigator.clipboard.readText());for(const row of rows)expect(text).toContain(row.label+': '+row.quantity+' unidades');
+ await page.getByRole('button',{name:'Gerar orçamento',exact:true}).filter({visible:true}).click();await page.locator('[name=production]').fill('2 dias úteis');await page.locator('#quote-confirm').click();const blank=await page.evaluate(()=>navigator.clipboard.readText());expect(blank).not.toContain('Bairro:');expect(blank).toContain('TOTAL DO PEDIDO');expect(blank).toContain('OUTRAS OPÇÕES');
+ await page.locator('#quote-form [name=zip]').fill('01001000');await page.locator('[name=street]').fill('Rua Exemplo');await page.locator('[name=number]').fill('123');await page.locator('[name=district]').fill('Centro');await page.locator('#quote-confirm').click();const filled=await page.evaluate(()=>navigator.clipboard.readText());expect(filled).toContain('Rua: Rua Exemplo');expect(filled).toContain('Número: 123');expect(filled).toContain('Bairro: Centro');expect(filled).not.toContain('Complemento:');
+});
+test('montadora comparison capacity, blank registration and large total are included only as configured',async({page})=>{
+ await page.goto('http://127.0.0.1:5174');const data=await page.evaluate(async()=>{
+ const {compareSheets}=await import('/src/utils/sheetComparison.ts'),{DEFAULT_CONFIG}=await import('/src/types.ts'),{renderApprovalPages}=await import('/src/utils/approval.ts'),{emptyCustomerOrder,customerConfirmation}=await import('/src/utils/customerOrder.ts');
+ const c=document.createElement('canvas');c.width=100;c.height=50;c.getContext('2d').fillRect(0,0,100,50);
+ const art={id:'a',name:'a',originalCanvas:c,trimmedCanvas:c,originalWidthPx:100,originalHeightPx:50,trimmedWidthPx:100,trimmedHeightPx:50,thumbnailUrl:'',quantity:2,maxSideCmOverride:10,rotate90:false};
+ const comparisons=compareSheets([art],{...DEFAULT_CONFIG,gapXMm:4,gapYMm:4,packMode:'grade'});const texts=[],old=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(...a){texts.push({text:a[0],font:this.font});return old.apply(this,a)};
+ const order={...emptyCustomerOrder(),price:'30',freight:'10',production:'2 dias',street:'Rua Exemplo',comparisonLines:comparisons};try{await renderApprovalPages([{name:'Modelo',widthCm:10,heightCm:5,quantity:2,source:c,rotated:false}],order,'29 × 21 cm',{pages:false,backdrop:'auto',revision:'1'});}finally{CanvasRenderingContext2D.prototype.fillText=old;}
+ return{comparisons,texts,message:customerConfirmation(order,'29 × 21 cm',[{widthCm:10,heightCm:5,quantity:2}])};
+ });expect(data.comparisons).toHaveLength(4);expect(data.comparisons[0]).toContain('6 unidades');expect(data.texts.find(t=>t.text.startsWith('TOTAL DO PEDIDO:')).font).toContain('44px');expect(data.texts.some(t=>t.text==='Rua: Rua Exemplo')).toBe(true);expect(data.texts.some(t=>t.text.startsWith('CEP:'))).toBe(false);expect(data.message).toContain('29 × 100 cm');
+});

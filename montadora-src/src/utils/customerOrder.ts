@@ -10,6 +10,16 @@ export interface CustomerOrder {
   production: string
   delivery: string
   notes: string
+  phone?: string
+  document?: string
+  zip?: string
+  street?: string
+  number?: string
+  complement?: string
+  district?: string
+  city?: string
+  state?: string
+  comparisonLines?: string[]
   quotedSheet?: { widthCm: number; heightCm: number; quantity: number }
 }
 interface ConfirmationArt { widthCm: number; heightCm: number; quantity: number; color?: string }
@@ -31,7 +41,7 @@ export function readCustomerOrder(search: string): CustomerOrder {
   try {
     const raw = JSON.parse(localStorage.getItem('dtf-order-handoff:' + token) ?? 'null')
     if (!raw || raw.version !== 1 || !Number.isFinite(raw.createdAt) || Date.now() - raw.createdAt > 86400000 || raw.createdAt > Date.now() + 60000) return blank
-    for (const key of ['name', 'orderId', 'color', 'carrier', 'production', 'delivery', 'notes'] as const) if (typeof raw[key] === 'string') blank[key] = raw[key].slice(0, key === 'notes' ? 1000 : 160)
+    for (const key of ['name', 'orderId', 'color', 'carrier', 'production', 'delivery', 'notes','phone','document','zip','street','number','complement','district','city','state'] as const) if (typeof raw[key] === 'string') blank[key] = raw[key].slice(0, key === 'notes' ? 1000 : 160)
     for (const key of ['price', 'freight'] as const) if (Number.isSafeInteger(raw[key]) && raw[key] >= 0 && raw[key] <= 1e12) blank[key] = (raw[key] / 100).toFixed(2).replace('.', ',')
     if (Number.isFinite(raw.widthCm) && Number.isFinite(raw.heightCm) && Array.isArray(raw.arts)) {
       const quantity = raw.arts.reduce((n: number, a: { quantity?: number }) => n + (Number.isSafeInteger(a.quantity) && a.quantity! > 0 ? a.quantity! : 0), 0)
@@ -43,7 +53,8 @@ export function readCustomerOrder(search: string): CustomerOrder {
 
 export function customerConfirmation(order: CustomerOrder, sheetLabel: string, arts: ConfirmationArt[]): string {
   if (!order.price.trim()) throw new Error('Informe o valor do produto para copiar a confirmação.')
-  return quote.generateConfirmation([{ id: 'actual', label: sheetLabel, price: customerMoney(order.price),
+  const text=quote.generateConfirmation([{ id: 'actual', label: sheetLabel, price: customerMoney(order.price),
     quantity: arts.reduce((n, a) => n + a.quantity, 0), arts }], { ...order, mode: 'confirmation', sheet: 'actual',
     freight: customerMoney(order.freight), estimated: false })
+  return order.comparisonLines?.length ? text+'\n\nOutras folhas — encaixe estimado, sem alterar seu pedido:\n'+order.comparisonLines.join('\n') : text
 }
