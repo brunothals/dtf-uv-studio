@@ -174,6 +174,10 @@ Limites iniciais para o teste: 200 MB de upload total, 100 MB e 100 milhões de 
 
 Cada trabalho concluído registra duração, segundos de CPU, pico de memória do processo e bytes do PNG nos logs (sem nomes, CEPs ou dados de clientes). O consumo financeiro do Railway é medido no painel do serviço; essas métricas não representam uma cobrança calculada. O serviço de teste tem limite de 1 GB RAM/1 vCPU e modo de suspensão por inatividade. Isso não impõe teto monetário à conta.
 
+## Copiar folhas para WhatsApp
+
+Abaixo do comparativo de folhas, nos dois modos de cálculo, o botão **Copiar folhas para WhatsApp** copia um texto curto com, para cada folha, a medida da arte, quantos adesivos cabem e o valor da folha. As linhas são as mesmas da tabela, inclusive a folha sob medida. Folhas onde nada cabe ficam de fora. Com várias artes, cada folha mostra a divisão por medida. Custo por arte, revenda, aproveitamento e frete não entram no texto. A mensagem aparece numa caixa abaixo do botão; se a cópia automática for bloqueada, o texto fica selecionado para copiar à mão.
+
 ## Consulta opcional de frete
 
 O componente de consulta fica sempre visível e aberto: na calculadora, num cartão próprio logo abaixo de **Dados do pedido**, que pode ser usado sem calcular antes, e também no topo da janela **Gerar orçamento**; na montadora, num cartão próprio abaixo das medidas da folha, fora do painel recolhido do pedido. O frete escolhido no cartão da calculadora é aplicado ao abrir o orçamento, e digitar na cotação não apaga o resultado calculado. Selecionar uma opção preenche frete, transportadora e prazo para copiar com o orçamento. Não cria cadastro, venda, etiqueta ou cobrança no Melhor Envio e não persiste o CEP consultado. O CEP só é enviado à API quando se clica em consultar. O app não registra o corpo da requisição.

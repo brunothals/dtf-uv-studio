@@ -104,6 +104,21 @@ calcular=function(){
   const invalid=inputs.find(el=>el.value===''||!Number.isFinite(el.valueAsNumber)||!el.checkValidity());
   if(invalid){invalid.focus();alert('Preencha medidas, quantidades e espaçamento válidos antes de calcular.');return;}
   calculateOriginal();
+  renderSheetShare();
 };
+
+// Texto do comparativo para WhatsApp: só folha, medida, adesivos e valor (as mesmas linhas da tabela).
+function renderSheetShare(){
+  for(const box of document.querySelectorAll('.sheet-share')){
+    const message=box.querySelector('.sheet-message'),button=box.querySelector('.sheet-copy');box.querySelector('.sheet-copy-status').textContent='';
+    try{message.value=Quote.sheetOptionsMessage(quoteRows);button.disabled=false;}
+    catch(e){message.value='';button.disabled=true;box.querySelector('.sheet-copy-status').textContent=e.message;}
+  }
+}
+for(const box of document.querySelectorAll('.sheet-share'))box.querySelector('.sheet-copy').addEventListener('click',async()=>{
+  const message=box.querySelector('.sheet-message'),status=box.querySelector('.sheet-copy-status');if(!message.value)return;
+  try{await navigator.clipboard.writeText(message.value);status.textContent='Folhas copiadas. Cole na conversa do WhatsApp.';}
+  catch{message.focus();message.select();status.textContent='Selecionei a mensagem. Use Copiar ou Ctrl+C para enviar ao cliente.';}
+});
 
 preview.addEventListener('input',()=>{const disabled=!valid||!preview.value.trim();document.getElementById('quote-copy').disabled=disabled;document.getElementById('quote-share').disabled=disabled;document.getElementById('quote-status').textContent='';});
