@@ -270,7 +270,7 @@ export default function App() {
   useEffect(() => { fetch('/api/capabilities').then(r => r.ok ? r.json() : null).then(data => { if(data?.cloudExport){setCloudAvailable(true);setCloudExport(true)} }).catch(() => {}) }, [])
   useEffect(() => {
     const host=freightHost.current;if(!host)return
-    const widget=document.createElement('dtf-freight');host.append(widget)
+    const widget=document.createElement('dtf-freight');widget.setAttribute('open','');host.append(widget)
     const selected=(event: Event)=>{const o=(event as CustomEvent).detail;setCustomerOrder(p=>({...p,freight:o.price.toFixed(2).replace('.',','),carrier:o.carrier+' '+o.service,delivery:o.days+' dia(s) úteis após a postagem'}))}
     widget.addEventListener('freight-selected',selected)
     return()=>{widget.removeEventListener('freight-selected',selected);widget.remove()}
@@ -1224,6 +1224,10 @@ export default function App() {
         <label className="field"><span>Lado padrão (cm)</span><input type="number" min={0.1} step={0.1} value={config.maxSideCm} onChange={e => updateConfig('maxSideCm', Math.max(.1, Number(e.target.value) || 5))} /></label>
         {exportQuality !== 'native' && <label className="field"><span>DPI do export</span><input type="number" min={72} step={1} value={config.dpi} onChange={e => updateConfig('dpi', Math.max(72, Number(e.target.value) || 300))} /></label>}
       </section>
+      <section className="freight-card" aria-label="Cotação de frete">
+        <div ref={freightHost} />
+        {customerOrder.carrier && /[1-9]/.test(customerOrder.freight) && <p className="hint freight-chosen" role="status">Frete do pedido: {customerOrder.carrier} — R$ {customerOrder.freight}{customerOrder.delivery ? ` — ${customerOrder.delivery}` : ''}. Vai para a confirmação e a imagem de aprovação.</p>}
+      </section>
       <details className="card customer-panel" open={!!customerOrder.orderId}><summary>Pedido e aprovação do cliente</summary>
         <p className="hint">Os dados do orçamento chegam aqui ao usar Continuar na montadora. Importe as artes na ordem indicada e revise os valores se mudar tamanhos ou quantidades. As cores abaixo são informações do pedido e não recolorem a imagem.</p>
         {customerOrder.quotedSheet && !layoutPending && sheets.length > 0 && (sheets.length !== 1 || layoutConfig.widthCm !== customerOrder.quotedSheet.widthCm || layoutConfig.heightCm !== customerOrder.quotedSheet.heightCm || counts.requested !== customerOrder.quotedSheet.quantity) && <p className="cut-alert" role="status">O orçamento veio de uma folha de {customerOrder.quotedSheet.widthCm} × {customerOrder.quotedSheet.heightCm} cm, com {customerOrder.quotedSheet.quantity} peças. A montagem atual mudou: confira a quantidade de folhas e revise o valor do produto antes de enviar ao cliente.</p>}
@@ -1248,7 +1252,6 @@ export default function App() {
           <button type="button" className="btn secondary sm" disabled={!sheets.length || layoutPending} onClick={() => void copyCustomerConfirmation()}>Copiar confirmação do pedido</button>
         </div></fieldset>
         <label><input type="checkbox" checked={includeComparison} onChange={e=>setIncludeComparison(e.target.checked)} /> Incluir comparação de capacidade: 29 × 21, 42, 50 e 100 cm (mesmo espaçamento e proporção dos modelos)</label>
-        <div ref={freightHost} />
         {confirmation && <label className="field"><span>Confirmação pronta para copiar</span><textarea className="customer-confirmation" value={confirmation} readOnly /></label>}
         {approvalUrls.map((url, i) => <a href={url} target="_blank" rel="noreferrer" key={url}><img className="approval-preview" src={url} alt={`Aprovação do cliente — página ${i + 1}`} /></a>)}
       </details>

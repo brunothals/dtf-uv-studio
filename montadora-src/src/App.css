@@ -1306,3 +1306,17 @@ textarea {
 .quantity-audit table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .quantity-audit th, .quantity-audit td { text-align: left; padding: 6px; overflow-wrap: anywhere; border-bottom: 1px solid #333; }
 .quantity-audit th:first-child { width: 55%; }
+
+/* Cotação de frete em cartão fixo, fora do painel recolhido do pedido. */
+.freight-card { margin: 12px 0; padding: 4px 16px; border: 1px solid var(--accent, #ff2eaa); border-radius: 10px; background: var(--card); }
+.freight-card summary { color: var(--accent, #ff2eaa); font-size: 1.05rem; }
+.freight-card p { color: var(--muted); font-size: .9rem; }
+.freight-card [hidden] { display: none !important; }
+.freight-card details > div:first-of-type { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px !important; }
+.freight-card label { display: block; margin: 4px 0; color: var(--muted); font-size: .85rem; }
+.freight-card input:not([type=checkbox]), .freight-card textarea { width: 100%; max-width: none !important; box-sizing: border-box; margin-top: 4px; padding: 8px 10px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+.freight-card input[type=checkbox] { margin-right: 6px; vertical-align: middle; }
+.freight-card button { min-height: 38px; padding: 8px 14px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; font: inherit; cursor: pointer; }
+.freight-card .freight-query { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.freight-card .freight-options button { width: 100%; max-width: 420px; text-align: left; }
+.freight-card .freight-chosen { color: #34d399; margin: 0 0 12px; }

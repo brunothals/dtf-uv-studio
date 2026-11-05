@@ -176,7 +176,7 @@ Cada trabalho concluído registra duração, segundos de CPU, pico de memória d
 
 ## Consulta opcional de frete
 
-O componente de consulta está na calculadora e na montadora. Selecionar uma opção preenche frete, transportadora e prazo para copiar com o orçamento. Não cria cadastro, venda, etiqueta ou cobrança no Melhor Envio e não persiste o CEP consultado. O CEP só é enviado à API quando se clica em consultar. O app não registra o corpo da requisição.
+O componente de consulta fica sempre visível e aberto: na calculadora, num cartão próprio logo abaixo de **Dados do pedido**, que pode ser usado sem calcular antes, e também no topo da janela **Gerar orçamento**; na montadora, num cartão próprio abaixo das medidas da folha, fora do painel recolhido do pedido. O frete escolhido no cartão da calculadora é aplicado ao abrir o orçamento, e digitar na cotação não apaga o resultado calculado. Selecionar uma opção preenche frete, transportadora e prazo para copiar com o orçamento. Não cria cadastro, venda, etiqueta ou cobrança no Melhor Envio e não persiste o CEP consultado. O CEP só é enviado à API quando se clica em consultar. O app não registra o corpo da requisição.
 
 São mostradas cinco opções, nesta ordem e conforme disponibilidade: **PAC**, **SEDEX**, **Loggi**, **Jadlog** e **J&T**. PAC e SEDEX são os serviços comuns dos Correios (SEDEX 10 e PAC Mini ficam de fora). Para Loggi, Jadlog e J&T, que têm vários serviços, aparece só a cotação mais barata de cada uma; em empate de preço, a mais rápida. As demais transportadoras devolvidas pelo Melhor Envio não aparecem.
 

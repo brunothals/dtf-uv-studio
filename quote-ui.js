@@ -1,7 +1,7 @@
 const dialog=document.createElement('dialog');
 dialog.id='quote-dialog';dialog.setAttribute('aria-labelledby','quote-title');
 dialog.innerHTML=`<h2 id="quote-title">Gerar orçamento</h2><button id="quote-close" class="bclean">Fechar</button>
-<p>1. Configuração do orçamento</p><p>As quantidades correspondem ao comparativo da calculadora. No modo normal, o comparativo considera todas as artes do pedido, na proporção das quantidades, sem a segunda arte proporcional. A folha sob medida usa o preço por cm configurado ou a estimativa pela tabela padrão.</p><form id="quote-form"><div class="quote-grid">
+<p>1. Configuração do orçamento</p><p>As quantidades correspondem ao comparativo da calculadora. No modo normal, o comparativo considera todas as artes do pedido, na proporção das quantidades, sem a segunda arte proporcional. A folha sob medida usa o preço por cm configurado ou a estimativa pela tabela padrão.</p><dtf-freight open></dtf-freight><form id="quote-form"><div class="quote-grid">
 <label>Modo<select name="mode"><option value="full">Comparativo completo</option><option value="short">Orçamento resumido</option><option value="formal">Formalização</option><option value="confirmation">Confirmação curta do pedido</option></select></label>
 <label>Nome do cliente (opcional)<input name="name" autocomplete="off"></label>
 <label>Número do pedido<input name="orderId" maxlength="60"></label>
@@ -15,13 +15,18 @@ ${[['phone','Telefone'],['document','CPF/CNPJ'],['zip','CEP'],['street','Rua'],[
 <label>Prazo estimado de entrega (opcional)<input name="delivery"></label>
 <label>Validade do orçamento (opcional)<input name="validity"></label>
 <label>Observações adicionais (opcional)<textarea name="notes"></textarea></label>
-</div><label><input type="checkbox" name="distributed"> Mostrar preço unitário com frete distribuído</label><label><input type="checkbox" name="compareSheets" checked> Incluir outras folhas na confirmação</label></form><dtf-freight></dtf-freight>
+</div><label><input type="checkbox" name="distributed"> Mostrar preço unitário com frete distribuído</label><label><input type="checkbox" name="compareSheets" checked> Incluir outras folhas na confirmação</label></form>
 <strong id="quote-total" aria-live="polite"></strong><p id="quote-error" role="alert"></p>
 <p>2. Prévia da mensagem</p><label for="quote-preview">Mensagem editável (alterar campos acima gera uma nova prévia)</label><textarea id="quote-preview" rows="18"></textarea>
 <p>3. Copiar e compartilhar</p><div class="quote-actions"><button class="bcalc" id="quote-copy">Copiar orçamento</button><button class="bcalc" id="quote-confirm">Copiar confirmação</button><button class="bcalc" id="quote-mount">Continuar na montadora</button><button class="bcalc" id="quote-share">Enviar pelo WhatsApp</button></div><p id="quote-status" role="status"></p>`;
 document.body.append(dialog);
-dialog.addEventListener('freight-selected',event=>{const o=event.detail;field('carrier').value='Outra';field('customCarrier').value=o.carrier+' '+o.service;field('freight').value=o.price.toFixed(2).replace('.',',');field('delivery').value=o.days+' dia(s) úteis após a postagem';refreshQuote();});
-const style=document.createElement('style');style.textContent=`#quote-dialog{color:var(--txt);background:var(--s1);border:1px solid var(--b2);border-radius:14px;padding:24px;width:min(940px,96vw);max-height:92dvh;overflow:auto;margin:auto}#quote-dialog::backdrop{background:#000b}#quote-dialog [hidden]{display:none!important}#quote-dialog h2{margin-bottom:12px}#quote-dialog p{margin:16px 0 10px}.quote-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}#quote-dialog label{color:#bcbcbc}#quote-dialog input[type=checkbox]{width:18px;height:18px;appearance:auto;vertical-align:middle}#quote-total{display:block;color:var(--accent);font-size:22px;margin-top:16px}#quote-error{color:#ff8396}#quote-preview{min-height:320px}.quote-actions{display:flex;gap:12px}.quote-actions button{padding:8px;height:auto;min-height:48px}@media(max-width:580px){.quote-grid{grid-template-columns:1fr}.quote-actions{flex-direction:column}#quote-dialog{padding:16px}}`;document.head.append(style);
+// Frete escolhido no cartão da página ou na janela: vale para o orçamento aberto e para os próximos.
+let chosenFreight=null;
+function applyFreight(o){field('carrier').value='Outra';field('customCarrier').value=o.carrier+' '+o.service;field('freight').value=o.price.toFixed(2).replace('.',',');field('delivery').value=o.days+' dia(s) úteis após a postagem';}
+function showChosenFreight(o){const el=document.getElementById('freight-chosen');if(el)el.textContent='Frete escolhido: '+o.label+' ('+o.carrier+' '+o.service+') — '+Quote.money(Math.round(o.price*100))+' — '+o.days+(o.days===1?' dia útil':' dias úteis')+'. Entra no orçamento ao clicar em Gerar orçamento.';}
+dialog.addEventListener('freight-selected',event=>{chosenFreight=event.detail;showChosenFreight(chosenFreight);applyFreight(chosenFreight);refreshQuote();});
+document.getElementById('card-frete')?.addEventListener('freight-selected',event=>{chosenFreight=event.detail;showChosenFreight(chosenFreight);if(dialog.open){applyFreight(chosenFreight);refreshQuote();}});
+const style=document.createElement('style');style.textContent=`#quote-dialog{color:var(--txt);background:var(--s1);border:1px solid var(--b2);border-radius:14px;padding:24px;width:min(940px,96vw);max-height:92dvh;overflow:auto;margin:auto}#quote-dialog::backdrop{background:#000b}#quote-dialog [hidden]{display:none!important}#quote-dialog h2{margin-bottom:12px}#quote-dialog p{margin:16px 0 10px}.quote-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}#quote-dialog label{color:#bcbcbc}#quote-dialog input[type=checkbox],dtf-freight input[type=checkbox]{width:18px;height:18px;appearance:auto;-webkit-appearance:auto;vertical-align:middle;margin-right:6px}dtf-freight summary{color:var(--accent);font-size:15px}dtf-freight p{font-size:12px;color:var(--t2);line-height:1.5}dtf-freight [hidden]{display:none!important}dtf-freight details>div:first-of-type{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px!important}dtf-freight details>div:first-of-type input{max-width:none!important}dtf-freight label{margin-top:6px}dtf-freight button{min-height:40px;padding:8px 14px;background:var(--s2);color:var(--txt);border:1px solid var(--b2);border-radius:8px;font:inherit;cursor:pointer}dtf-freight .freight-query{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}dtf-freight .freight-options button{width:100%;text-align:left}#freight-chosen:not(:empty){color:var(--green);margin-top:8px}#quote-total{display:block;color:var(--accent);font-size:22px;margin-top:16px}#quote-error{color:#ff8396}#quote-preview{min-height:320px}.quote-actions{display:flex;gap:12px}.quote-actions button{padding:8px;height:auto;min-height:48px}@media(max-width:580px){.quote-grid{grid-template-columns:1fr}.quote-actions{flex-direction:column}#quote-dialog{padding:16px}}`;document.head.append(style);
 const form=document.getElementById('quote-form'),preview=document.getElementById('quote-preview');
 // The direct copy action now includes the same calculated options shown in the table.
 copiarResumo=function(){
@@ -54,6 +59,7 @@ function openQuote(){
   for(const key of ['phone','document','zip','street','number','complement','district','city','state'])field(key).value='';
   field('orderId').value='DTF-'+new Date().toLocaleDateString('sv-SE').replace(/-/g,'')+'-'+Math.random().toString(36).slice(2,6).toUpperCase();
   try{const p=JSON.parse(localStorage.getItem('dtf-quote-preferences')||'{}');if([...field('carrier').options].some(o=>o.value===p.carrier))field('carrier').value=p.carrier;if(typeof p.production==='string')field('production').value=p.production;}catch{}
+  if(chosenFreight)applyFreight(chosenFreight);
   refreshQuote();dialog.showModal();
 }
 form.addEventListener('input',refreshQuote);form.addEventListener('submit',e=>e.preventDefault());
@@ -86,7 +92,8 @@ document.getElementById('quote-mount').onclick=()=>{
   }catch(e){document.getElementById('quote-status').textContent='Não foi possível transferir o pedido: '+e.message;}
 };
 // Any calculator input edit invalidates its old result and prevents stale quotes.
-document.querySelector('.wrap').addEventListener('input',e=>{if(e.target.matches('input,select,textarea')){document.getElementById('result').style.display='none';document.getElementById('result-inv').style.display='none';quoteRows=[];}});
+// A cotação de frete não muda o encaixe: digitar nela não invalida o resultado.
+document.querySelector('.wrap').addEventListener('input',e=>{if(e.target.matches('input,select,textarea')&&!e.target.closest('dtf-freight')){document.getElementById('result').style.display='none';document.getElementById('result-inv').style.display='none';quoteRows=[];}});
 
 document.querySelector('.wrap').addEventListener('click',e=>{if(e.target.closest('.rm,.badd')){document.getElementById('result').style.display='none';document.getElementById('result-inv').style.display='none';quoteRows=[];}});
 // Validate inputs before invoking the original packing engine; its algorithm is unchanged.
