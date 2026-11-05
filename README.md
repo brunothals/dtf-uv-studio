@@ -178,6 +178,10 @@ Cada trabalho concluído registra duração, segundos de CPU, pico de memória d
 
 O componente de consulta está na calculadora e na montadora. Selecionar uma opção preenche frete, transportadora e prazo para copiar com o orçamento. Não cria cadastro, venda, etiqueta ou cobrança no Melhor Envio e não persiste o CEP consultado. O CEP só é enviado à API quando se clica em consultar. O app não registra o corpo da requisição.
 
+São mostradas cinco opções, nesta ordem e conforme disponibilidade: **PAC**, **SEDEX**, **Loggi**, **Jadlog** e **J&T**. PAC e SEDEX são os serviços comuns dos Correios (SEDEX 10 e PAC Mini ficam de fora). Para Loggi, Jadlog e J&T, que têm vários serviços, aparece só a cotação mais barata de cada uma; em empate de preço, a mais rápida. As demais transportadoras devolvidas pelo Melhor Envio não aparecem.
+
+A opção **Acrescentar R$ 2,00 em cada cotação de frete** soma R$ 2,00 a todas as opções exibidas, nos botões, na mensagem para o WhatsApp e no valor que vai para o orçamento, a confirmação e a aprovação. Ela vem ligada e a escolha fica salva neste navegador (`dtf-freight-preferences`). Ligar ou desligar recalcula os valores já consultados sem nova consulta. A mensagem para o cliente mostra só o valor final, sem mencionar o acréscimo.
+
 Para ativar no servidor, configurar com segurança `MELHOR_ENVIO_TOKEN` (autorização válida com permissão de cotação), `FREIGHT_ORIGIN_ZIP` (8 dígitos) e `SUPPORT_EMAIL`. Nenhum segredo deve entrar no GitHub. Sem essas credenciais, o app informa que a consulta não está conectada, e o frete manual continua disponível. Informar medidas/peso reais da embalagem; não confundir com a folha aberta. A opção marcada adiciona um dia **somente quando o prazo retornado for exatamente um dia útil**, mantendo os demais e separando produção de transporte. Usa preços e prazos personalizados da API quando disponíveis. Não há compra de etiquetas implementada.
 
 ## Aprovação e cadastro opcionais
