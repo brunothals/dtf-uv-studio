@@ -174,6 +174,13 @@ a.bsm{display:inline-flex;align-items:center;justify-content:center;text-decorat
     </div>
   </div>
 
+  <div class="card" id="card-frete">
+    <p class="ctitle">Cotação de frete</p>
+    <p class="hint" style="margin-bottom:0">Consulte a qualquer momento, sem calcular antes. O frete escolhido entra no próximo orçamento.</p>
+    <dtf-freight open></dtf-freight>
+    <p class="hint" id="freight-chosen" role="status" style="margin:0"></p>
+  </div>
+
   <div class="card">
     <p class="ctitle">Modo de cálculo</p>
     <div class="maintabs">
@@ -1151,6 +1158,7 @@ renderSavedOrders();
 loadPricing();
 document.getElementById('fh-custom').addEventListener('input',updatePricingHint);
 </script>
+<script src="assets/freight.js"></script>
 <script src="quote-ui.js"></script>
 </body>
 </html>
