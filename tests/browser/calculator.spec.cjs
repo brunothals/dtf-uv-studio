@@ -71,6 +71,44 @@ test('rótulos com acentos e botões de adicionar arte distintos',async({page})=
  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
+test('modo inverso: rotação nunca aumenta o comprimento mínimo e artes largas são deitadas',async({page})=>{
+ const alerts=[];page.on('dialog',d=>{alerts.push(d.message());d.dismiss();});
+ // O toggle visual esconde o checkbox real; o estado é definido diretamente no elemento, como um clique faria.
+ const rotation=(on)=>page.evaluate(on=>{const el=document.getElementById('rotacao-inv');el.checked=on;el.dispatchEvent(new Event('input',{bubbles:true}));},on);
+ await page.goto('/');await page.locator('#main-inv').click();
+ await page.evaluate(()=>{document.getElementById('arts-list-inv').innerHTML='';addArtInv(10,8,1,'');});
+ await calc(page);await expect(page.locator('#inv-size')).toHaveText('29 x 8 cm');
+ await rotation(false);await calc(page);await expect(page.locator('#inv-size')).toHaveText('29 x 8 cm');
+ await rotation(true);
+ await page.evaluate(()=>{document.getElementById('arts-list-inv').innerHTML='';addArtInv(40,20,1,'');});
+ await calc(page);await expect(page.locator('#inv-size')).toHaveText('29 x 40 cm');
+ await rotation(false);await calc(page);await expect(page.locator('#result-inv')).not.toBeVisible();expect(alerts.at(-1)).toMatch(/não cabem na largura fixa de 29 cm/);
+});
+
+test('nome do cliente e anúncio não invalidam o resultado; medidas sim',async({page})=>{
+ await page.goto('/');await calc(page);await expect(page.locator('#result')).toBeVisible();
+ await page.locator('#client-name').fill('Maria');await page.locator('#sale-ad').fill('Instagram');
+ await expect(page.locator('#result')).toBeVisible();
+ await page.getByRole('button',{name:'Gerar orçamento',exact:true}).filter({visible:true}).click();
+ await expect(page.locator('[name=name]')).toHaveValue('Maria');await page.keyboard.press('Escape');
+ await page.locator('#fill-w').fill('6');await expect(page.locator('#result')).not.toBeVisible();
+});
+
+test('QR Code local aceita pedidos com muitas artes e é decodificado por um leitor independente',async({page})=>{
+ const jsQR=require('jsqr');const alerts=[];page.on('dialog',d=>{alerts.push(d.message());d.dismiss();});
+ await page.goto('/');await page.locator('#mt-multi').click();
+ await page.evaluate(()=>{document.getElementById('arts-list').innerHTML='';[[10,8,4,'colorido'],[5,4,6,'preto'],[3,3,2,'branco'],[7,7,1,'dourado'],[2,2,9,'azul'],[6,3,5,'vermelho']].forEach(a=>addArt(...a));});
+ await page.locator('#s2w').fill('2.5');await page.locator('#s2h').fill('2');await calc(page);
+ await page.getByRole('button',{name:'QR Code'}).click();
+ await expect(page.locator('#qr-overlay')).toHaveClass(/show/);expect(alerts).toEqual([]);
+ const img=await page.evaluate(()=>{const c=document.getElementById('qr-canvas');const d=c.getContext('2d').getImageData(0,0,c.width,c.height);return {w:c.width,h:c.height,data:Array.from(d.data)};});
+ const decoded=jsQR(new Uint8ClampedArray(img.data),img.w,img.h);expect(decoded).not.toBeNull();
+ expect(decoded.data).toMatch(/^DTF\|F:29x21\|E:0\.3\|10x8 colorido=\d+,5x4 preto=\d+,3x3 branco=\d+,7x7 dourado=\d+,2x2 azul=\d+,6x3 vermelho=\d+\|T:\d+\|U:\d+%\|S2:2\.5x2$/);
+ expect(Buffer.byteLength(decoded.data)).toBeGreaterThan(78);
+ await expect(page.locator('#qr-lines')).toContainText('6x3cm vermelho');
+ await page.locator('.qr-close').click();await expect(page.locator('#qr-overlay')).not.toHaveClass(/show/);
+});
+
 test('montar esta folha: montadora abre com folha, espaçamento, medidas e quantidades',async({page})=>{
  await page.goto('/');await page.locator('#mt-multi').click();
  await page.evaluate(()=>{document.getElementById('arts-list').innerHTML='';addArt(4,2,3,'');addArt(3,3,2,'');});

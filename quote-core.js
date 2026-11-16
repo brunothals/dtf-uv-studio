@@ -44,12 +44,14 @@
     const lines=['*CONFIRMAÇÃO PARA CONFERÊNCIA — DTF UV MANIA*'];
     if(c.orderId?.trim())lines.push('Pedido: '+c.orderId.trim());
     if(c.name?.trim())lines.push('Cliente: '+c.name.trim());
+    for(const [key,label]of [['phone','Telefone'],['document','CPF/CNPJ'],['zip','CEP'],['street','Rua'],['number','Número'],['complement','Complemento'],['district','Bairro'],['city','Cidade'],['state','Estado']])if(c[key]?.trim())lines.push(label+': '+c[key].trim());
     lines.push('Folha: '+chosen.label,'Quantidade: '+chosen.quantity+' adesivos');
     if(c.color?.trim())lines.push('Cor/acabamento geral: '+c.color.trim());
     for(const [i,a]of (chosen.arts||[]).entries())if(a.quantity>0){
       lines.push('• Modelo '+String(i+1).padStart(2,'0')+': '+a.widthCm+' × '+a.heightCm+' cm · '+a.quantity+' un. · '+(a.color||c.color||'cor não informada'));
     }
-    lines.push('','Produto: '+money(chosen.price),'Frete: '+c.carrier.trim()+' — '+money(c.freight),'*Total: '+money(chosen.price+c.freight)+'*','Produção: '+c.production.trim());
+    lines.push('','Produto: '+money(chosen.price),'Frete: '+c.carrier.trim()+' — '+money(c.freight),'','*TOTAL DO PEDIDO: '+money(chosen.price+c.freight)+'*','','Produção: '+c.production.trim());
+    if(c.compareSheets){lines.push('','OUTRAS OPÇÕES DE FOLHA (encaixe estimado):');for(const row of rows)if(row.id!==chosen.id&&row.quantity>0)lines.push('• '+row.label+': '+row.quantity+' unidades · '+money(row.price)+' · '+money(unit(row.price,row.quantity))+'/un. sem frete');}
     if(c.delivery?.trim())lines.push('Entrega estimada: '+c.delivery.trim());
     if(c.notes?.trim())lines.push('Observações: '+c.notes.trim());
     if(c.estimated!==false)lines.push('','Encaixe estimado pelas medidas; conferir com as artes na montagem.');
@@ -89,7 +91,25 @@
     return {...out,sale,revenue:Number(revenue),profit:Number(profit)};
   }
   function whatsapp(text){if(!text.trim())throw Error('Mensagem vazia.');return 'https://wa.me/?text='+encodeURIComponent(text);}
-  const api={cents,money,signedMoney,unit,best,validate,generate,generateConfirmation,whatsapp,tenths,lengthPrice,estimateLengthPrice,resale};
+  // Mensagem curta para WhatsApp com o comparativo: folha, medida da arte, adesivos por folha e valor da folha.
+  function sheetOptionsMessage(rows){
+    const cm=n=>Number(n).toLocaleString('pt-BR',{maximumFractionDigits:2});
+    const size=a=>cm(a.widthCm)+' × '+cm(a.heightCm)+' cm';
+    const valid=(rows||[]).filter(r=>Number.isSafeInteger(r.quantity)&&r.quantity>0&&validMoney(r.price));
+    if(!valid.length)throw Error('Nenhuma folha com adesivos para enviar.');
+    // Medidas distintas das artes, na ordem em que foram informadas.
+    const sizes=[...new Set(valid.flatMap(r=>(r.arts||[]).map(size)))];
+    const lines=['📋 *Opções de folha*'];
+    if(sizes.length)lines.push((sizes.length===1?'Arte: ':'Artes: ')+sizes.join(' e '));
+    lines.push('');
+    for(const r of valid){
+      const parts=(r.arts||[]).filter(a=>a.quantity>0);
+      const detail=sizes.length>1&&parts.length?' ('+parts.map(a=>a.quantity+' de '+size(a)).join(' + ')+')':'';
+      lines.push('• *Folha '+String(r.label).replace(/\s+x\s+/i,' × ')+'*: '+r.quantity+' adesivos'+detail+' — '+money(r.price));
+    }
+    return lines.join('\n');
+  }
+  const api={cents,money,signedMoney,unit,best,validate,generate,generateConfirmation,whatsapp,tenths,lengthPrice,estimateLengthPrice,resale,sheetOptionsMessage};
   if(typeof module!=='undefined')module.exports=api;
   // Bundlers may wrap this shared file as CommonJS even inside the browser.
   if(typeof window!=='undefined')root.Quote=api;
