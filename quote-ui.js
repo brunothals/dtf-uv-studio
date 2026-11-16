@@ -93,7 +93,8 @@ document.getElementById('quote-mount').onclick=()=>{
 };
 // Any calculator input edit invalidates its old result and prevents stale quotes.
 // A cotação de frete não muda o encaixe: digitar nela não invalida o resultado.
-document.querySelector('.wrap').addEventListener('input',e=>{if(e.target.matches('input,select,textarea')&&!e.target.closest('dtf-freight')){document.getElementById('result').style.display='none';document.getElementById('result-inv').style.display='none';quoteRows=[];}});
+// Client name and sale ad only label the order: they are read when copying/saving and do not change the packing.
+document.querySelector('.wrap').addEventListener('input',e=>{if(e.target.matches('input,select,textarea')&&!e.target.closest('dtf-freight')&&!e.target.matches('#client-name,#sale-ad')){document.getElementById('result').style.display='none';document.getElementById('result-inv').style.display='none';quoteRows=[];}});
 
 document.querySelector('.wrap').addEventListener('click',e=>{if(e.target.closest('.rm,.badd')){document.getElementById('result').style.display='none';document.getElementById('result-inv').style.display='none';quoteRows=[];}});
 // Validate inputs before invoking the original packing engine; its algorithm is unchanged.
